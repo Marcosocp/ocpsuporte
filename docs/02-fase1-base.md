@@ -124,3 +124,13 @@ Suíte de ponta a ponta com navegador real (Playwright): **63 de 63 verificaçõ
 
 Fase 2: IA de triagem com o modelo local (perguntas pelo que falta, ficha técnica, sugestão de área, analista e
 prioridade).
+
+## Em uso no ZGX (2026-10-27)
+
+- Produção em `127.0.0.1:3200`. O painel é acessado **só pela tailnet**: `https://zgx-ocp.tail8d7ec5.ts.net:3200`
+  (`tailscale serve`, nunca Funnel).
+- Primeiro administrador: `marcos@ocp.com.br` (convite enviado por e-mail).
+- Até a Fase 4 os links dos e-mails apontam para o endereço do Tailscale. Por isso **ainda não convide usuários
+  reais de clientes**: eles não conseguiriam abrir o link. Cadastros (clientes, departamentos, sistemas, áreas,
+  analistas com Tailscale) já podem ser feitos.
+- Backup: `scripts/backup.sh` (testado: o arquivo abre e o dump do banco está completo). Agendar no cron às 03:45.
