@@ -1,0 +1,28 @@
+<%# Conversa do chamado. Parâmetros: mensagens, rotaAnexos ("/portal/anexos" ou "/painel/anexos"). %>
+<% for (const m of mensagens) {
+     const daEquipe = m.autor_papel === "admin" || m.autor_papel === "analista"; %>
+<article class="mensagem <%= !m.autor_id ? 'sistema' : m.visibilidade === 'interna' ? 'interna' : daEquipe ? 'da-equipe' : '' %>" id="m<%= m.id %>">
+  <div class="mensagem-topo">
+    <span>
+      <strong><%= m.autor ?? "Sistema" %></strong><% if (daEquipe) { %> · Suporte OCP<% } %>
+      <% if (m.visibilidade === "interna") { %> <span class="etiqueta">nota interna — o cliente não vê</span><% } %>
+    </span>
+    <time><%= dataHora(m.criado_em) %></time>
+  </div>
+  <div class="mensagem-texto"><%= m.texto %></div>
+  <% if (m.anexos.length) { %>
+  <div class="anexos">
+    <% for (const a of m.anexos) { %>
+      <% if (a.tipo.startsWith("image/")) { %>
+        <a class="anexo imagem" href="<%= rotaAnexos %>/<%= a.id %>" target="_blank" rel="noopener">
+          <img src="<%= rotaAnexos %>/<%= a.id %>" alt="<%= a.nome %>" loading="lazy">
+          <span><%= a.nome %> · <%= tamanhoLegivel(a.tamanho) %></span>
+        </a>
+      <% } else { %>
+        <a class="anexo" href="<%= rotaAnexos %>/<%= a.id %>?baixar=1">📎 <%= a.nome %> · <%= tamanhoLegivel(a.tamanho) %></a>
+      <% } %>
+    <% } %>
+  </div>
+  <% } %>
+</article>
+<% } %>

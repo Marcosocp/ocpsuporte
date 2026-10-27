@@ -1,0 +1,10 @@
+node_modules
+dist
+data
+backups
+secrets
+.env
+.git
+docs
+*.md
+docker-compose*.yml

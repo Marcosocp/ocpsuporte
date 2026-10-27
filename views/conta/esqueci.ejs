@@ -1,0 +1,17 @@
+<%- include("../partes/topo", { titulo: "Esqueci minha senha" }) %>
+<div class="cartao estreito">
+  <h1>Esqueci minha senha</h1>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <% if (enviado) { %>
+    <p class="aviso">Se o e-mail estiver cadastrado, você vai receber um link para criar uma nova senha. O link vale por 1 hora.</p>
+    <p><a href="/login">Voltar ao login</a></p>
+  <% } else { %>
+  <form method="post" action="/conta/esqueci">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label>E-mail <input type="email" name="email" required autofocus autocomplete="username"></label>
+    <button class="primario largo">Enviar link</button>
+    <p><a href="/login">Voltar</a></p>
+  </form>
+  <% } %>
+</div>
+<%- include("../partes/rodape") %>

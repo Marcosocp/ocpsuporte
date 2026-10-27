@@ -1,0 +1,48 @@
+<%- include("../partes/topo", { titulo: "Abrir chamado" }) %>
+<form method="post" action="/portal/chamados/novo" enctype="multipart/form-data" class="cartao medio">
+  <h1>Abrir chamado</h1>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+
+  <p class="rotulo">O que você precisa?</p>
+  <div class="opcoes-radio">
+    <% for (const [k, v] of Object.entries(TIPOS)) { %>
+      <label><input type="radio" name="tipo" value="<%= k %>" required <%= valores.tipo === k ? "checked" : "" %>> <%= v %></label>
+    <% } %>
+  </div>
+
+  <label>Assunto <input name="titulo" maxlength="200" required value="<%= valores.titulo %>" placeholder="Ex.: Erro ao gerar nota fiscal no Protheus"></label>
+
+  <div class="linha">
+    <% if (departamentos.length) { %>
+    <label>Departamento
+      <select name="departamento_id" required>
+        <% if (departamentos.length > 1) { %><option value="">Escolha…</option><% } %>
+        <% for (const d of departamentos) { %><option value="<%= d.id %>" <%= String(valores.departamento_id) === String(d.id) ? "selected" : "" %>><%= d.nome %></option><% } %>
+      </select>
+    </label>
+    <% } %>
+    <label>Sistema
+      <select name="sistema_id">
+        <option value="">Não sei / outro</option>
+        <% for (const s of sistemas) { %><option value="<%= s.id %>" <%= String(valores.sistema_id) === String(s.id) ? "selected" : "" %>><%= s.nome %></option><% } %>
+      </select>
+    </label>
+  </div>
+
+  <p class="rotulo">Quem está sendo afetado?</p>
+  <div class="opcoes-radio">
+    <% for (const [k, v] of Object.entries(IMPACTOS)) { %>
+      <label><input type="radio" name="impacto" value="<%= k %>" required <%= valores.impacto === k ? "checked" : "" %>> <%= v %></label>
+    <% } %>
+  </div>
+
+  <label>Descrição
+    <textarea name="descricao" rows="8" maxlength="20000" required data-colar-anexos placeholder="Conte o que aconteceu: a mensagem de erro, o que você estava fazendo, desde quando acontece. Para melhorias, como é hoje e como deveria ser."><%= valores.descricao %></textarea>
+  </label>
+  <p class="dica">⚠️ Nunca envie senhas no chamado.</p>
+
+  <%- include("../partes/campo-anexos") %>
+  <button class="primario">Abrir chamado</button>
+</form>
+<%- include("../partes/rodape") %>

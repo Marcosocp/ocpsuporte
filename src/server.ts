@@ -1,0 +1,103 @@
+import path from "node:path";
+import express from "express";
+import session from "express-session";
+import MySQLStoreFactory from "express-mysql-session";
+import helmet from "helmet";
+import { config } from "./config.js";
+import { pool } from "./db/conexao.js";
+import { migrar } from "./db/migrar.js";
+import { csrf, ehEquipe, inicioDe } from "./auth.js";
+import { restringirPublico } from "./publico.js";
+import { rotasConta } from "./rotas/conta.js";
+import { rotasPortal } from "./rotas/portal.js";
+import { rotasPainel } from "./rotas/painel.js";
+import { rotasCadastros } from "./rotas/cadastros.js";
+import { IMPACTOS, PRIORIDADES, SITUACOES_CLIENTE, SITUACOES_EQUIPE, TIPOS, fecharResolvidosAntigos } from "./chamados.js";
+import { numero } from "./modelos-email.js";
+import { EXTENSOES_ACEITAS, MAX_ANEXOS, TAMANHO_MAXIMO, tamanhoLegivel } from "./anexos.js";
+import { formatarCelular, formatarCnpj } from "./validacao.js";
+
+const aplicadas = await migrar();
+if (aplicadas.length) console.log(`Migrações aplicadas: ${aplicadas.join(", ")}`);
+
+const app = express();
+app.set("view engine", "ejs");
+app.set("views", path.join(config.raiz, "views"));
+// Atrás de proxy (tailscale serve / cloudflared): necessário para req.ip real (auditoria/limite de tentativas).
+app.set("trust proxy", config.trustProxy);
+app.disable("x-powered-by");
+app.use(restringirPublico); // primeiro de tudo: pela internet só passam login, conta, portal e estáticos
+
+app.use(helmet({
+  contentSecurityPolicy: { directives: { "script-src": ["'self'"], "img-src": ["'self'", "data:", "blob:"] } },
+}));
+// Sem cache longo: o navegador revalida (ETag) e nunca fica com JS/CSS antigo depois de uma atualização.
+app.use("/static", express.static(path.join(config.raiz, "public"), { maxAge: 0 }));
+app.use(express.urlencoded({ extended: false, limit: "200kb" }));
+
+const MySQLStore = MySQLStoreFactory(session as any);
+app.use(session({
+  name: "ocpsuporte.sid",
+  secret: config.sessionSecret,
+  store: new MySQLStore({
+    createDatabaseTable: true,
+    schema: { tableName: "sessoes", columnNames: { session_id: "id", expires: "expira", data: "data" } },
+  }, pool as any),
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  // "auto": cookie Secure quando a requisição chegou por HTTPS (X-Forwarded-Proto do proxy).
+  cookie: { httpOnly: true, sameSite: "lax", secure: "auto", maxAge: 8 * 60 * 60 * 1000 },
+}));
+
+// Muda a cada reinício: força o navegador a baixar CSS/JS novos depois de uma atualização.
+const versao = Date.now().toString(36);
+const fuso = { timeZone: "America/Sao_Paulo" } as const;
+app.locals.dataHora = (d: Date | string | null) =>
+  d ? new Date(d).toLocaleString("pt-BR", { ...fuso, dateStyle: "short", timeStyle: "short" }) : "";
+app.locals.data = (d: Date | string | null) => (d ? new Date(d).toLocaleDateString("pt-BR", fuso) : "");
+app.locals.dataIso = (d: Date | string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+Object.assign(app.locals, {
+  numero, tamanhoLegivel, formatarCelular, formatarCnpj, TIPOS, IMPACTOS, PRIORIDADES, SITUACOES_CLIENTE, SITUACOES_EQUIPE,
+  EXTENSOES_ACEITAS, MAX_ANEXOS, TAMANHO_MAXIMO_MB: TAMANHO_MAXIMO / 1024 / 1024,
+});
+
+app.use((req, res, next) => {
+  res.locals.versao = versao;
+  res.locals.usuario = req.session.usuario ?? null;
+  res.locals.equipe = ehEquipe(req.session.usuario);
+  res.locals.aviso = req.session.aviso ?? null;
+  delete req.session.aviso;
+  next();
+});
+app.use(csrf);
+
+app.get("/saude", async (_req, res) => {
+  await pool.query("SELECT 1");
+  res.json({ ok: true });
+});
+app.get("/", (req, res) => res.redirect(req.session.usuario ? inicioDe(req.session.usuario) : "/login"));
+app.use(rotasConta);
+app.use("/portal", rotasPortal);
+// Ordem importa: os cadastros exigem administrador para tudo que chega a eles,
+// então o painel (chamados, que os analistas usam) vem antes.
+app.use("/painel", rotasPainel);
+app.use("/painel", rotasCadastros);
+
+app.use((_req, res) => res.status(404).render("erro", { mensagem: "Página não encontrada." }));
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  res.status(500).render("erro", { mensagem: "Erro interno. Tente de novo." });
+});
+
+app.listen(config.porta, () => console.log(`OCP Suporte ouvindo na porta ${config.porta}`));
+
+// Tarefas periódicas (a cada hora): fecha resolvidos sem retorno e limpa códigos/links vencidos.
+async function tarefas() {
+  const fechados = await fecharResolvidosAntigos(config.diasFecharResolvido);
+  await pool.query("DELETE FROM codigos_login WHERE expira_em < UTC_TIMESTAMP() - INTERVAL 1 DAY");
+  await pool.query("DELETE FROM navegadores_confiaveis WHERE expira_em < UTC_TIMESTAMP()");
+  await pool.query("DELETE FROM links_conta WHERE expira_em < UTC_TIMESTAMP() - INTERVAL 30 DAY");
+  if (fechados) console.log(`Tarefas: ${fechados} chamado(s) fechado(s) automaticamente`);
+}
+setInterval(() => tarefas().catch((e) => console.error("Falha nas tarefas periódicas:", e)), 60 * 60 * 1000).unref();

@@ -1,0 +1,13 @@
+<%- include("../partes/topo", { titulo: "Minha senha" }) %>
+<form method="post" action="/conta/senha" class="cartao estreito">
+  <h1>Trocar senha</h1>
+  <p class="sutil"><%= usuario.nome %> · <%= usuario.email %></p>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Senha atual <input type="password" name="atual" required autocomplete="current-password"></label>
+  <label>Nova senha <input type="password" name="nova" required minlength="10" autocomplete="new-password"></label>
+  <label>Confirmar nova senha <input type="password" name="confirmar" required minlength="10" autocomplete="new-password"></label>
+  <p class="sutil">Mínimo de 10 caracteres, com letras e números. Os navegadores marcados como confiáveis voltam a pedir o código.</p>
+  <button class="primario">Salvar</button>
+</form>
+<%- include("../partes/rodape") %>

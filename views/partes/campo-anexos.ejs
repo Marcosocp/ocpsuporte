@@ -1,0 +1,5 @@
+<label>Anexos <span class="sutil">(opcional — prints, PDFs, planilhas, logs)</span>
+  <input type="file" name="anexos" multiple accept="<%= EXTENSOES_ACEITAS %>" data-anexos>
+</label>
+<p class="dica">Até <%= MAX_ANEXOS %> arquivos de <%= TAMANHO_MAXIMO_MB %> MB. Dica: você pode colar um print (Ctrl+V) direto na caixa de texto.</p>
+<ul class="lista-arquivos" data-lista-anexos></ul>

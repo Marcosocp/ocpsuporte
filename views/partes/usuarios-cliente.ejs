@@ -1,0 +1,67 @@
+<%# Usuários de um cliente. Parâmetros: usuarios, departamentos, rota (base dos formulários: /portal/equipe ou /painel/clientes/ID). %>
+<table>
+  <thead><tr><th>Nome</th><th>Perfil</th><th>Departamentos</th><th>Acesso</th><th></th></tr></thead>
+  <tbody>
+  <% for (const u of usuarios) { %>
+    <tr class="<%= u.ativo ? '' : 'inativo' %>">
+      <td class="quebra"><%= u.nome %><br><span class="sutil"><%= u.email %><%= u.celular ? " · " + formatarCelular(u.celular) : "" %></span></td>
+      <td><%= u.papel === "gestor" ? "Gestor" : "Usuário" %><%= u.ativo ? "" : " (inativo)" %></td>
+      <td class="quebra"><%= u.departamentos || "—" %></td>
+      <td><%= u.acesso_definido ? (u.ultimo_login ? "Último login " + dataHora(u.ultimo_login) : "Senha definida") : "Convite pendente" %>
+        <% if (!u.acesso_definido && u.ativo) { %>
+        <form method="post" action="<%= rota %>/usuarios/<%= u.id %>/convite" class="inline">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><br><button class="link">reenviar convite</button>
+        </form>
+        <% } %>
+      </td>
+      <td>
+        <details class="editar"><summary>editar</summary>
+          <form method="post" action="<%= rota %>/usuarios/<%= u.id %>">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <label>Nome <input name="nome" value="<%= u.nome %>" required maxlength="150"></label>
+            <label>Celular (WhatsApp) <input name="celular" value="<%= formatarCelular(u.celular) %>" maxlength="20"></label>
+            <label>Perfil
+              <select name="papel">
+                <option value="usuario" <%= u.papel === "usuario" ? "selected" : "" %>>Usuário — vê os próprios chamados</option>
+                <option value="gestor" <%= u.papel === "gestor" ? "selected" : "" %>>Gestor — vê todos os chamados da empresa</option>
+              </select>
+            </label>
+            <p class="rotulo">Departamentos</p>
+            <div class="checks">
+              <% for (const d of departamentos.filter((d) => d.ativo || u.departamento_ids.includes(d.id))) { %>
+                <label class="check"><input type="checkbox" name="departamentos" value="<%= d.id %>" <%= u.departamento_ids.includes(d.id) ? "checked" : "" %>> <%= d.nome %></label>
+              <% } %>
+            </div>
+            <label class="check"><input type="checkbox" name="ativo" value="1" <%= u.ativo ? "checked" : "" %>> Ativo</label>
+            <button class="primario">Salvar</button>
+          </form>
+        </details>
+      </td>
+    </tr>
+  <% } %>
+  </tbody>
+</table>
+
+<details class="editar">
+  <summary>+ Novo usuário</summary>
+  <form method="post" action="<%= rota %>/usuarios">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="linha">
+      <label>Nome <input name="nome" required maxlength="150"></label>
+      <label>E-mail <input type="email" name="email" required maxlength="190"></label>
+      <label>Celular (WhatsApp) <input name="celular" maxlength="20" placeholder="(11) 91234-5678"></label>
+      <label>Perfil
+        <select name="papel"><option value="usuario">Usuário</option><option value="gestor">Gestor</option></select>
+      </label>
+    </div>
+    <p class="rotulo">Departamentos</p>
+    <div class="checks">
+      <% for (const d of departamentos.filter((d) => d.ativo)) { %>
+        <label class="check"><input type="checkbox" name="departamentos" value="<%= d.id %>"> <%= d.nome %></label>
+      <% } %>
+      <% if (!departamentos.length) { %><span class="sutil">Nenhum departamento cadastrado ainda.</span><% } %>
+    </div>
+    <p class="dica">A pessoa recebe um e-mail para definir a própria senha.</p>
+    <button class="primario">Criar e enviar convite</button>
+  </form>
+</details>

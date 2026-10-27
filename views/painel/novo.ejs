@@ -1,0 +1,55 @@
+<%- include("../partes/topo", { titulo: "Abrir chamado" }) %>
+<div class="cartao medio">
+  <h1>Abrir chamado em nome do cliente</h1>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <form method="get" action="/painel/chamados/novo" class="botoes">
+    <label>Solicitante
+      <select name="solicitante" required data-enviar-ao-mudar>
+        <option value="">Escolha…</option>
+        <% let grupo = null; for (const s of solicitantes) { if (s.cliente !== grupo) { if (grupo) { %></optgroup><% } grupo = s.cliente; %><optgroup label="<%= s.cliente %>"><% } %>
+          <option value="<%= s.id %>" <%= solicitante && solicitante.id === s.id ? "selected" : "" %>><%= s.nome %> (<%= s.email %>)</option>
+        <% } if (grupo) { %></optgroup><% } %>
+      </select>
+    </label>
+    <noscript><button class="secundario">Continuar</button></noscript>
+  </form>
+
+  <% if (solicitante) { %>
+  <form method="post" action="/painel/chamados/novo" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="solicitante_id" value="<%= solicitante.id %>">
+    <p class="sutil">Cliente: <strong><%= solicitante.cliente %></strong>. O solicitante recebe a confirmação por e-mail e acompanha pelo portal.</p>
+    <p class="rotulo">Tipo</p>
+    <div class="opcoes-radio">
+      <% for (const [k, v] of Object.entries(TIPOS)) { %>
+        <label><input type="radio" name="tipo" value="<%= k %>" required <%= valores.tipo === k ? "checked" : "" %>> <%= v %></label>
+      <% } %>
+    </div>
+    <label>Assunto <input name="titulo" maxlength="200" required value="<%= valores.titulo %>"></label>
+    <div class="linha">
+      <label>Departamento
+        <select name="departamento_id">
+          <option value="">—</option>
+          <% for (const d of departamentos) { %><option value="<%= d.id %>" <%= String(valores.departamento_id) === String(d.id) ? "selected" : "" %>><%= d.nome %><%= d.dele ? " ★" : "" %></option><% } %>
+        </select>
+      </label>
+      <label>Sistema
+        <select name="sistema_id">
+          <option value="">—</option>
+          <% for (const s of sistemas) { %><option value="<%= s.id %>" <%= String(valores.sistema_id) === String(s.id) ? "selected" : "" %>><%= s.nome %></option><% } %>
+        </select>
+      </label>
+    </div>
+    <p class="rotulo">Impacto</p>
+    <div class="opcoes-radio">
+      <% for (const [k, v] of Object.entries(IMPACTOS)) { %>
+        <label><input type="radio" name="impacto" value="<%= k %>" required <%= valores.impacto === k ? "checked" : "" %>> <%= v %></label>
+      <% } %>
+    </div>
+    <label>Descrição <textarea name="descricao" rows="8" maxlength="20000" required data-colar-anexos><%= valores.descricao %></textarea></label>
+    <%- include("../partes/campo-anexos") %>
+    <button class="primario">Abrir chamado</button>
+  </form>
+  <% } %>
+</div>
+<%- include("../partes/rodape") %>

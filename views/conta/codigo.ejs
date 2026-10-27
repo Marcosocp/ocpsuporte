@@ -1,0 +1,19 @@
+<%- include("../partes/topo", { titulo: "Código de acesso" }) %>
+<div class="cartao estreito">
+  <form method="post" action="/login/codigo">
+    <h1>Código de acesso</h1>
+    <p>Enviamos um código de 6 dígitos para <strong><%= email %></strong>.</p>
+    <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label>Código <input class="codigo" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required autofocus></label>
+    <label class="check"><input type="checkbox" name="confiar" value="1"> Confiar neste navegador por 30 dias</label>
+    <p class="dica">Não marque em computador compartilhado.</p>
+    <button class="primario largo">Entrar</button>
+  </form>
+  <form method="post" action="/login/codigo/reenviar">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <p class="sutil">Não chegou? Veja o spam ou <button class="link">envie outro código</button>.</p>
+  </form>
+  <p><a href="/login">Voltar</a></p>
+</div>
+<%- include("../partes/rodape") %>

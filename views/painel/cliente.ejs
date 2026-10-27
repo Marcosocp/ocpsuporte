@@ -1,0 +1,114 @@
+<%- include("../partes/topo", { titulo: cliente.nome }) %>
+<div class="cabecalho">
+  <h1><%= cliente.nome %><%= cliente.ativo ? "" : " (inativo)" %></h1>
+  <a href="/painel?fila=abertos&cliente=<%= cliente.id %>">Ver chamados</a>
+</div>
+
+<section class="cartao">
+  <details class="editar">
+    <summary>Dados do cliente</summary>
+    <form method="post" action="/painel/clientes/<%= cliente.id %>">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <div class="linha">
+        <label>Nome <input name="nome" value="<%= cliente.nome %>" required maxlength="150"></label>
+        <label>CNPJ <input name="cnpj" value="<%= formatarCnpj(cliente.cnpj) %>" maxlength="18"></label>
+      </div>
+      <label>Observações internas (o cliente não vê) <textarea name="observacoes" rows="3" maxlength="5000"><%= cliente.observacoes ?? "" %></textarea></label>
+      <label class="check"><input type="checkbox" name="ativo" value="1" <%= cliente.ativo ? "checked" : "" %>> Ativo (desmarcar bloqueia o acesso de todos os usuários da empresa)</label>
+      <button class="primario">Salvar</button>
+    </form>
+  </details>
+  <p class="sutil">CNPJ: <%= formatarCnpj(cliente.cnpj) || "—" %><%= cliente.observacoes ? " · " + cliente.observacoes : "" %></p>
+</section>
+
+<section class="cartao" id="contrato">
+  <h2>Contrato <span class="sutil">(só a OCP vê)</span></h2>
+  <% if (contratos.length) { %>
+  <table>
+    <thead><tr><th>Pacote</th><th>Hora excedente</th><th>Vigência</th><th>Observações</th></tr></thead>
+    <tbody>
+    <% for (const c of contratos) { %>
+      <tr><td><%= Number(c.horas_mes).toLocaleString("pt-BR") %> h/mês</td>
+        <td><%= c.valor_hora_excedente !== null ? Number(c.valor_hora_excedente).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—" %></td>
+        <td><%= data(c.inicio) %> a <%= c.fim ? data(c.fim) : "indeterminado" %></td>
+        <td class="quebra"><%= c.observacoes ?? "" %></td></tr>
+    <% } %>
+    </tbody>
+  </table>
+  <% } else { %><p class="sutil">Nenhum contrato registrado.</p><% } %>
+  <details class="editar">
+    <summary>+ Registrar contrato</summary>
+    <form method="post" action="/painel/clientes/<%= cliente.id %>/contratos">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <div class="linha">
+        <label>Horas por mês <input name="horas_mes" inputmode="decimal" required placeholder="100"></label>
+        <label>Valor da hora excedente (R$) <input name="valor_hora_excedente" inputmode="decimal" placeholder="opcional"></label>
+        <label>Início <input type="date" name="inicio" required></label>
+        <label>Fim <input type="date" name="fim"></label>
+      </div>
+      <label>Observações <input name="observacoes" maxlength="2000"></label>
+      <p class="dica">As horas não usadas zeram a cada mês. Para mudar o pacote, registre um contrato novo a partir da data da mudança.</p>
+      <button class="primario">Registrar</button>
+    </form>
+  </details>
+</section>
+
+<section class="cartao" id="departamentos">
+  <h2>Departamentos</h2>
+  <%- include("../partes/departamentos", { departamentos, rota: "/painel/clientes/" + cliente.id }) %>
+</section>
+
+<section class="cartao" id="usuarios">
+  <h2>Usuários</h2>
+  <%- include("../partes/usuarios-cliente", { usuarios, departamentos, rota: "/painel/clientes/" + cliente.id }) %>
+</section>
+
+<section class="cartao" id="sistemas">
+  <h2>Sistemas e ambientes</h2>
+  <p class="dica">Como o cliente acessa cada sistema (ex.: Protheus pelo Workspace, portal em https://…). A IA de triagem usa isto para entender o chamado. <strong>Nunca registre senhas aqui.</strong></p>
+  <% const formSistema = (s) => { %>
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="linha">
+      <label>Nome <input name="nome" value="<%= s ? s.nome : '' %>" required maxlength="100" placeholder="Protheus"></label>
+      <label>Categoria
+        <select name="categoria"><% for (const [k, v] of Object.entries(categorias)) { %><option value="<%= k %>" <%= s && s.categoria === k ? "selected" : "" %>><%= v %></option><% } %></select>
+      </label>
+    </div>
+    <label>Acesso <input name="acesso" value="<%= s ? s.acesso ?? '' : '' %>" maxlength="500" placeholder="Workspace / https://portal.cliente.com.br / VPN"></label>
+    <label>Ambientes <input name="ambientes" value="<%= s ? s.ambientes ?? '' : '' %>" maxlength="255" placeholder="produção, homologação"></label>
+    <label>Observações <textarea name="observacoes" rows="2" maxlength="5000" placeholder="Módulos usados, versão, particularidades"><%= s ? s.observacoes ?? '' : '' %></textarea></label>
+    <p class="rotulo">Departamentos que usam</p>
+    <div class="checks">
+      <% for (const d of departamentos.filter((d) => d.ativo || (s && s.departamento_ids.includes(d.id)))) { %>
+        <label class="check"><input type="checkbox" name="departamentos" value="<%= d.id %>" <%= s && s.departamento_ids.includes(d.id) ? "checked" : "" %>> <%= d.nome %></label>
+      <% } %>
+    </div>
+  <% } %>
+  <table>
+    <thead><tr><th>Sistema</th><th>Acesso</th><th>Ambientes</th><th></th></tr></thead>
+    <tbody>
+    <% for (const s of sistemas) { %>
+      <tr class="<%= s.ativo ? '' : 'inativo' %>">
+        <td class="quebra"><%= s.nome %><br><span class="sutil"><%= categorias[s.categoria] %><%= s.ativo ? "" : " · inativo" %></span></td>
+        <td class="quebra"><%= s.acesso ?? "—" %></td>
+        <td class="quebra"><%= s.ambientes ?? "—" %></td>
+        <td><details class="editar"><summary>editar</summary>
+          <form method="post" action="/painel/clientes/<%= cliente.id %>/sistemas/<%= s.id %>">
+            <% formSistema(s) %>
+            <label class="check"><input type="checkbox" name="ativo" value="1" <%= s.ativo ? "checked" : "" %>> Ativo</label>
+            <button class="primario">Salvar</button>
+          </form>
+        </details></td>
+      </tr>
+    <% } %>
+    </tbody>
+  </table>
+  <details class="editar">
+    <summary>+ Novo sistema</summary>
+    <form method="post" action="/painel/clientes/<%= cliente.id %>/sistemas">
+      <% formSistema(null) %>
+      <button class="primario">Cadastrar</button>
+    </form>
+  </details>
+</section>
+<%- include("../partes/rodape") %>

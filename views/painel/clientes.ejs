@@ -1,0 +1,29 @@
+<%- include("../partes/topo", { titulo: "Clientes" }) %>
+<h1>Clientes</h1>
+<div class="cartao">
+  <table>
+    <thead><tr><th>Cliente</th><th>CNPJ</th><th>Usuários ativos</th><th>Chamados abertos</th><th>Pacote</th></tr></thead>
+    <tbody>
+    <% for (const c of clientes) { %>
+      <tr class="<%= c.ativo ? '' : 'inativo' %>">
+        <td><a href="/painel/clientes/<%= c.id %>"><%= c.nome %></a><%= c.ativo ? "" : " (inativo)" %></td>
+        <td><%= formatarCnpj(c.cnpj) %></td>
+        <td><%= c.usuarios %></td>
+        <td><%= c.abertos %></td>
+        <td><%= c.horas_mes ? Number(c.horas_mes).toLocaleString("pt-BR") + " h/mês" : "—" %></td>
+      </tr>
+    <% } %>
+    <% if (!clientes.length) { %><tr><td colspan="5" class="sutil">Nenhum cliente cadastrado.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+<form method="post" action="/painel/clientes" class="cartao medio">
+  <h2>Novo cliente</h2>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <div class="linha">
+    <label>Nome <input name="nome" required maxlength="150"></label>
+    <label>CNPJ <input name="cnpj" maxlength="18" placeholder="00.000.000/0000-00"></label>
+  </div>
+  <button class="primario">Criar cliente</button>
+</form>
+<%- include("../partes/rodape") %>

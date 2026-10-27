@@ -1,0 +1,58 @@
+# PRODUÇÃO no ZGX. O painel da OCP é acessível pelo Tailscale (tailscale serve → 127.0.0.1:3200);
+# a internet chega só pelo Cloudflare Tunnel (suporte.ocp.com.br, Fase 4), que enxerga login, conta e portal.
+# Testes: docker-compose.teste.yml (scripts/instancia_teste.sh).
+name: ocpsuporte
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: ocpsuporte-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    networks: [interna]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      retries: 20
+
+  app:
+    build: .
+    image: ocpsuporte-app:local
+    container_name: ocpsuporte-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    volumes:
+      - ./data/anexos:/app/data/anexos
+    ports:
+      - "127.0.0.1:3200:3200"
+    networks: [interna, publica]
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # Fase 4. Liga com: docker compose --profile tunel up -d  (token em secrets/cloudflared.env, fora do Git)
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    container_name: ocpsuporte-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: secrets/cloudflared.env
+    networks: [publica]
+    profiles: [tunel]
+    depends_on: [app]
+
+networks:
+  interna: {}
+  # Só o túnel e o app. O app trata como "internet" tudo que chega por aqui (src/publico.ts).
+  publica:
+    ipam:
+      config:
+        - subnet: 172.31.251.0/24

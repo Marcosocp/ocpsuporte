@@ -1,0 +1,40 @@
+<%- include("../partes/topo", { titulo: "Chamados" }) %>
+<div class="cabecalho">
+  <h1>Chamados</h1>
+  <form method="get" class="botoes">
+    <input type="hidden" name="fila" value="<%= fila %>">
+    <select name="cliente" aria-label="Cliente" data-enviar-ao-mudar>
+      <option value="">Todos os clientes</option>
+      <% for (const c of clientes) { %><option value="<%= c.id %>" <%= clienteId === c.id ? "selected" : "" %>><%= c.nome %></option><% } %>
+    </select>
+    <noscript><button class="secundario">Filtrar</button></noscript>
+  </form>
+</div>
+<nav class="abas">
+  <% for (const [k, f] of Object.entries(filas)) { %>
+    <a href="?fila=<%= k %><%= clienteId ? '&cliente=' + clienteId : '' %>" class="<%= k === fila ? 'ativa' : '' %>"><%= f.titulo %><% if (k in contagens) { %><span class="contagem"><%= contagens[k] %></span><% } %></a>
+  <% } %>
+</nav>
+<div class="cartao">
+<% if (!chamados.length) { %>
+  <p class="sutil">Nenhum chamado aqui.</p>
+<% } else { %>
+  <table>
+    <thead><tr><th>Nº</th><th>Assunto</th><th>Cliente</th><th>Prioridade</th><th>Situação</th><th>Responsável</th><th>Aberto</th></tr></thead>
+    <tbody>
+    <% for (const c of chamados) { %>
+      <tr>
+        <td><a href="/painel/chamados/<%= c.id %>"><%= numero(c.id) %></a></td>
+        <td class="quebra"><a href="/painel/chamados/<%= c.id %>"><%= c.titulo %></a><br><span class="sutil"><%= TIPOS[c.tipo] %> · <%= c.solicitante %></span></td>
+        <td><%= c.cliente %></td>
+        <td><span class="pr pr-<%= c.prioridade %>"><%= PRIORIDADES[c.prioridade] %></span></td>
+        <td><%- include("../partes/situacao", { status: c.status }) %></td>
+        <td><%= c.responsavel ?? "—" %><% if (c.area) { %><br><span class="sutil"><%= c.area %></span><% } %></td>
+        <td><%= dataHora(c.criado_em) %></td>
+      </tr>
+    <% } %>
+    </tbody>
+  </table>
+<% } %>
+</div>
+<%- include("../partes/rodape") %>

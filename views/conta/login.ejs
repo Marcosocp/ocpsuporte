@@ -1,0 +1,12 @@
+<%- include("../partes/topo", { titulo: "Entrar" }) %>
+<form method="post" action="/login" class="cartao estreito">
+  <h1 class="marca grande">OCP<span>Suporte</span></h1>
+  <p class="sutil">Portal de chamados de TI</p>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>E-mail <input type="email" name="email" value="<%= email %>" required autofocus autocomplete="username"></label>
+  <label>Senha <input type="password" name="senha" required autocomplete="current-password"></label>
+  <button class="primario largo">Entrar</button>
+  <p><a href="/conta/esqueci">Esqueci minha senha</a></p>
+</form>
+<%- include("../partes/rodape") %>

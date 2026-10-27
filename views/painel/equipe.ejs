@@ -1,0 +1,92 @@
+<%- include("../partes/topo", { titulo: "Equipe" }) %>
+<h1>Equipe da OCP</h1>
+<section class="cartao" id="usuarios">
+  <h2>Pessoas</h2>
+  <table>
+    <thead><tr><th>Nome</th><th>Perfil</th><th>Áreas</th><th>Acesso</th><th></th></tr></thead>
+    <tbody>
+    <% for (const u of usuarios) { %>
+      <tr class="<%= u.ativo ? '' : 'inativo' %>">
+        <td class="quebra"><%= u.nome %><br><span class="sutil"><%= u.email %><%= u.celular ? " · " + formatarCelular(u.celular) : "" %></span></td>
+        <td><%= u.papel === "admin" ? "Administrador" : "Analista" %><%= u.ativo ? "" : " (inativo)" %></td>
+        <td class="quebra"><%= areas.filter((a) => u.area_ids.includes(a.id)).map((a) => a.nome).join(", ") || "—" %></td>
+        <td><%= u.acesso_definido ? (u.ultimo_login ? "Último login " + dataHora(u.ultimo_login) : "Senha definida") : "Convite pendente" %>
+          <% if (!u.acesso_definido && u.ativo) { %>
+          <form method="post" action="/painel/equipe/usuarios/<%= u.id %>/convite" class="inline">
+            <input type="hidden" name="_csrf" value="<%= csrf %>"><br><button class="link">reenviar convite</button>
+          </form>
+          <% } %>
+        </td>
+        <td><details class="editar"><summary>editar</summary>
+          <form method="post" action="/painel/equipe/usuarios/<%= u.id %>">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <label>Nome <input name="nome" value="<%= u.nome %>" required maxlength="150"></label>
+            <label>Celular (WhatsApp) <input name="celular" value="<%= formatarCelular(u.celular) %>" maxlength="20"></label>
+            <label>Perfil
+              <select name="papel">
+                <option value="analista" <%= u.papel === "analista" ? "selected" : "" %>>Analista</option>
+                <option value="admin" <%= u.papel === "admin" ? "selected" : "" %>>Administrador</option>
+              </select>
+            </label>
+            <p class="rotulo">Áreas</p>
+            <div class="checks">
+              <% for (const a of areas.filter((a) => a.ativo || u.area_ids.includes(a.id))) { %>
+                <label class="check"><input type="checkbox" name="areas" value="<%= a.id %>" <%= u.area_ids.includes(a.id) ? "checked" : "" %>> <%= a.nome %></label>
+              <% } %>
+            </div>
+            <label class="check"><input type="checkbox" name="ativo" value="1" <%= u.ativo ? "checked" : "" %>> Ativo</label>
+            <button class="primario">Salvar</button>
+          </form>
+        </details></td>
+      </tr>
+    <% } %>
+    </tbody>
+  </table>
+  <details class="editar">
+    <summary>+ Nova pessoa</summary>
+    <form method="post" action="/painel/equipe/usuarios">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <div class="linha">
+        <label>Nome <input name="nome" required maxlength="150"></label>
+        <label>E-mail <input type="email" name="email" required maxlength="190"></label>
+        <label>Celular (WhatsApp) <input name="celular" maxlength="20"></label>
+        <label>Perfil <select name="papel"><option value="analista">Analista</option><option value="admin">Administrador</option></select></label>
+      </div>
+      <p class="rotulo">Áreas</p>
+      <div class="checks">
+        <% for (const a of areas.filter((a) => a.ativo)) { %><label class="check"><input type="checkbox" name="areas" value="<%= a.id %>"> <%= a.nome %></label><% } %>
+      </div>
+      <p class="dica">O analista vê os chamados das áreas dele e os atribuídos a ele. O administrador vê tudo e distribui.</p>
+      <button class="primario">Criar e enviar convite</button>
+    </form>
+  </details>
+</section>
+
+<section class="cartao" id="areas">
+  <h2>Áreas de atendimento</h2>
+  <table>
+    <tbody>
+    <% for (const a of areas) { %>
+      <tr class="<%= a.ativo ? '' : 'inativo' %>">
+        <td class="quebra"><%= a.nome %><%= a.ativo ? "" : " (inativa)" %><br><span class="sutil"><%= a.descricao ?? "" %></span></td>
+        <td><details class="editar"><summary>editar</summary>
+          <form method="post" action="/painel/equipe/areas/<%= a.id %>">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <label>Nome <input name="nome" value="<%= a.nome %>" required maxlength="100"></label>
+            <label>Descrição <input name="descricao" value="<%= a.descricao ?? '' %>" maxlength="255"></label>
+            <label class="check"><input type="checkbox" name="ativo" value="1" <%= a.ativo ? "checked" : "" %>> Ativa</label>
+            <button class="primario">Salvar</button>
+          </form>
+        </details></td>
+      </tr>
+    <% } %>
+    </tbody>
+  </table>
+  <form method="post" action="/painel/equipe/areas" class="botoes">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input name="nome" required maxlength="100" placeholder="Nova área (ex.: Protheus)" aria-label="Nova área">
+    <input name="descricao" maxlength="255" placeholder="Descrição (opcional)" aria-label="Descrição">
+    <button class="secundario">Adicionar</button>
+  </form>
+</section>
+<%- include("../partes/rodape") %>

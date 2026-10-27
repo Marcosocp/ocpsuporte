@@ -1,0 +1,25 @@
+<%# Departamentos de um cliente. Parâmetros: departamentos, rota. %>
+<table>
+  <tbody>
+  <% for (const d of departamentos) { %>
+    <tr class="<%= d.ativo ? '' : 'inativo' %>">
+      <td><%= d.nome %><%= d.ativo ? "" : " (inativo)" %></td>
+      <td>
+        <details class="editar"><summary>editar</summary>
+          <form method="post" action="<%= rota %>/departamentos/<%= d.id %>" class="botoes">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <input name="nome" value="<%= d.nome %>" required maxlength="100">
+            <label class="check"><input type="checkbox" name="ativo" value="1" <%= d.ativo ? "checked" : "" %>> Ativo</label>
+            <button class="primario">Salvar</button>
+          </form>
+        </details>
+      </td>
+    </tr>
+  <% } %>
+  </tbody>
+</table>
+<form method="post" action="<%= rota %>/departamentos" class="botoes">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <input name="nome" required maxlength="100" placeholder="Novo departamento (ex.: Financeiro)" aria-label="Novo departamento">
+  <button class="secundario">Adicionar</button>
+</form>

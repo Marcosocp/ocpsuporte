@@ -1,0 +1,125 @@
+<%- include("../partes/topo", { titulo: numero(ch.id) }) %>
+<div class="cabecalho">
+  <h1><%= numero(ch.id) %> · <%= ch.titulo %></h1>
+  <div class="botoes">
+    <span class="pr pr-<%= ch.prioridade %>"><%= PRIORIDADES[ch.prioridade] %></span>
+    <%- include("../partes/situacao", { status: ch.status }) %>
+  </div>
+</div>
+<div class="chamado">
+  <section>
+    <%- include("../partes/mensagens", { mensagens, rotaAnexos: "/painel/anexos" }) %>
+
+    <form method="post" action="/painel/chamados/<%= ch.id %>/responder" enctype="multipart/form-data" class="cartao" id="responder">
+      <h2>Responder</h2>
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <div class="opcoes-radio">
+        <label><input type="radio" name="visibilidade" value="publica" checked <%= ["fechado", "cancelado"].includes(ch.status) ? "disabled" : "" %>> Resposta ao cliente</label>
+        <label><input type="radio" name="visibilidade" value="interna" <%= ["fechado", "cancelado"].includes(ch.status) ? "checked" : "" %>> Nota interna</label>
+      </div>
+      <label><textarea name="texto" rows="6" maxlength="20000" required data-colar-anexos placeholder="Mensagem"></textarea></label>
+      <% if (!["fechado", "cancelado"].includes(ch.status)) { %>
+      <label>E mudar a situação para
+        <select name="status">
+          <option value="">(automático: em atendimento)</option>
+          <option value="em_atendimento">Em atendimento</option>
+          <option value="aguardando_cliente">Aguardando cliente (pedir informação)</option>
+          <option value="resolvido">Resolvido (a mensagem é a solução)</option>
+        </select>
+      </label>
+      <% } %>
+      <%- include("../partes/campo-anexos") %>
+      <button class="primario">Enviar</button>
+    </form>
+
+    <details class="cartao">
+      <summary><strong>Histórico</strong></summary>
+      <table class="historico">
+        <% for (const e of eventos) { %>
+          <tr><td><%= dataHora(e.criado_em) %></td><td><%= e.usuario ?? "Sistema" %></td><td><%= e.acao.replaceAll("_", " ") %></td><td><%= e.ip ?? "" %></td></tr>
+        <% } %>
+      </table>
+    </details>
+  </section>
+
+  <aside class="chamado-lado">
+    <div class="cartao">
+      <dl class="ficha">
+        <dt>Cliente</dt><dd><%= ch.cliente %></dd>
+        <dt>Solicitante</dt><dd><%= ch.solicitante_nome %><br><span class="sutil"><%= ch.solicitante_email %></span></dd>
+        <% if (ch.departamento) { %><dt>Depto.</dt><dd><%= ch.departamento %></dd><% } %>
+        <% if (ch.sistema) { %><dt>Sistema</dt><dd><%= ch.sistema %><% if (ch.sistema_acesso) { %><br><span class="sutil"><%= ch.sistema_acesso %></span><% } %></dd><% } %>
+        <dt>Tipo</dt><dd><%= TIPOS[ch.tipo] %></dd>
+        <dt>Impacto</dt><dd><%= IMPACTOS[ch.impacto] %></dd>
+        <dt>Canal</dt><dd><%= ch.canal %></dd>
+        <dt>Aberto</dt><dd><%= dataHora(ch.criado_em) %></dd>
+        <% if (ch.primeira_resposta_em) { %><dt>1ª resposta</dt><dd><%= dataHora(ch.primeira_resposta_em) %></dd><% } %>
+        <% if (ch.resolvido_em) { %><dt>Resolvido</dt><dd><%= dataHora(ch.resolvido_em) %></dd><% } %>
+        <dt>Área</dt><dd><%= ch.area ?? "—" %></dd>
+        <dt>Responsável</dt><dd><%= ch.responsavel_nome ?? "—" %></dd>
+      </dl>
+      <% if (!ch.responsavel_id && !["fechado", "cancelado"].includes(ch.status)) { %>
+      <form method="post" action="/painel/chamados/<%= ch.id %>/assumir">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <p><button class="secundario">Assumir este chamado</button></p>
+      </form>
+      <% } %>
+    </div>
+
+    <% if (usuario.papel === "admin") { %>
+    <form method="post" action="/painel/chamados/<%= ch.id %>/distribuir" class="cartao">
+      <h2>Distribuição</h2>
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label>Área
+        <select name="area_id">
+          <option value="">—</option>
+          <% for (const a of areas) { %><option value="<%= a.id %>" <%= ch.area_id === a.id ? "selected" : "" %>><%= a.nome %></option><% } %>
+        </select>
+      </label>
+      <label>Responsável
+        <select name="responsavel_id">
+          <option value="">— sem responsável —</option>
+          <% for (const p of equipe) { %><option value="<%= p.id %>" <%= ch.responsavel_id === p.id ? "selected" : "" %>><%= p.nome %><%= p.id === usuario.id ? " (eu)" : "" %><%= p.areas ? " · " + p.areas : "" %></option><% } %>
+        </select>
+      </label>
+      <div class="linha">
+        <label>Prioridade
+          <select name="prioridade"><% for (const [k, v] of Object.entries(PRIORIDADES)) { %><option value="<%= k %>" <%= ch.prioridade === k ? "selected" : "" %>><%= v %></option><% } %></select>
+        </label>
+        <label>Tipo
+          <select name="tipo"><% for (const [k, v] of Object.entries(TIPOS)) { %><option value="<%= k %>" <%= ch.tipo === k ? "selected" : "" %>><%= v %></option><% } %></select>
+        </label>
+      </div>
+      <button class="primario">Salvar</button>
+    </form>
+    <div class="cartao">
+      <% if (["resolvido", "fechado", "cancelado"].includes(ch.status)) { %>
+      <form method="post" action="/painel/chamados/<%= ch.id %>/reabrir">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <button class="secundario">Reabrir chamado</button>
+      </form>
+      <% } %>
+      <% if (!["fechado", "cancelado"].includes(ch.status)) { %>
+      <details class="editar">
+        <summary>Cancelar chamado</summary>
+        <form method="post" action="/painel/chamados/<%= ch.id %>/cancelar" data-confirmar="Cancelar este chamado? O cliente será avisado.">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <label>Motivo (vai para o cliente) <input name="motivo" maxlength="500"></label>
+          <button class="secundario perigo-borda">Cancelar</button>
+        </form>
+      </details>
+      <% } %>
+    </div>
+    <% } %>
+
+    <% if (outros.length) { %>
+    <div class="cartao">
+      <h2>Outros chamados do solicitante</h2>
+      <% for (const o of outros) { %>
+        <p><a href="/painel/chamados/<%= o.id %>"><%= numero(o.id) %></a> <%= o.titulo %><br><span class="sutil"><%= SITUACOES_EQUIPE[o.status] %> · <%= data(o.criado_em) %></span></p>
+      <% } %>
+    </div>
+    <% } %>
+  </aside>
+</div>
+<%- include("../partes/rodape") %>

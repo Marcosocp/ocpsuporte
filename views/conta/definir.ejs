@@ -1,0 +1,13 @@
+<%- include("../partes/topo", { titulo: "Definir senha" }) %>
+<form method="post" class="cartao estreito">
+  <h1><%= link.tipo === "convite" ? "Bem-vindo" : "Nova senha" %></h1>
+  <p><%= link.nome %> · <span class="sutil"><%= link.email %></span></p>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <input type="hidden" name="email" value="<%= link.email %>" autocomplete="username">
+  <label>Senha <input type="password" name="nova" required minlength="10" autocomplete="new-password" autofocus></label>
+  <label>Confirmar senha <input type="password" name="confirmar" required minlength="10" autocomplete="new-password"></label>
+  <p class="sutil">Mínimo de 10 caracteres, com letras e números.</p>
+  <button class="primario largo">Salvar senha</button>
+</form>
+<%- include("../partes/rodape") %>

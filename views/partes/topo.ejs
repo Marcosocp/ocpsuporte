@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= typeof titulo !== "undefined" ? titulo + " · " : "" %>OCP Suporte</title>
+  <link rel="stylesheet" href="/static/css/estilo.css?v=<%= versao %>">
+</head>
+<body>
+<% if (usuario) { %>
+<header class="barra">
+  <a class="marca" href="<%= equipe ? '/painel' : '/portal' %>">OCP<span>Suporte</span></a>
+  <nav>
+    <% if (equipe) { %>
+      <a href="/painel">Chamados</a>
+      <a href="/painel/chamados/novo">Abrir chamado</a>
+      <% if (usuario.papel === "admin") { %><a href="/painel/clientes">Clientes</a><a href="/painel/equipe">Equipe</a><% } %>
+    <% } else { %>
+      <a href="/portal">Meus chamados</a>
+      <a href="/portal/chamados/novo">Abrir chamado</a>
+      <% if (usuario.papel === "gestor") { %><a href="/portal/equipe">Minha equipe</a><% } %>
+    <% } %>
+    <a href="/conta/senha" title="<%= usuario.email %>"><%= usuario.nome.split(" ")[0] %></a>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <button class="link">Sair</button>
+    </form>
+  </nav>
+</header>
+<% } %>
+<main class="<%= usuario ? 'conteudo' : 'centro' %>">
+<% if (aviso) { %><p class="aviso"><%= aviso %></p><% } %>

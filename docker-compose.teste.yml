@@ -1,0 +1,54 @@
+# Instância de TESTE isolada (scripts/instancia_teste.sh). Nunca usa o banco, os anexos nem o SMTP reais:
+# banco em memória, código montado só para leitura, e-mails gravados em arquivo.
+name: ocpsuporte-teste
+
+services:
+  mysql-teste:
+    image: mysql:8.4
+    container_name: ocpsuporte-teste-mysql
+    environment:
+      MYSQL_DATABASE: ocpsuporte_teste
+      MYSQL_USER: teste
+      MYSQL_PASSWORD: teste-senha
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uteste -pteste-senha --silent"]
+      interval: 3s
+      retries: 40
+
+  app-teste:
+    image: node:22-bookworm-slim
+    container_name: ocpsuporte-teste-app
+    working_dir: /app
+    user: "1000:1000"
+    command: npx tsx src/server.ts
+    environment:
+      HOME: /tmp
+      NODE_ENV: development
+      PORT: "3210"
+      BASE_URL: http://127.0.0.1:3210
+      PAINEL_URL: http://127.0.0.1:3210
+      DB_HOST: mysql-teste
+      DB_PORT: "3306"
+      DB_NAME: ocpsuporte_teste
+      DB_USER: teste
+      DB_PASSWORD: teste-senha
+      SESSION_SECRET: segredo-somente-da-instancia-de-teste-0123456789abcdef
+      EMAIL_MODO: arquivo
+      SMTP_HOST: ""
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      PASTA_ANEXOS: /teste/anexos
+      PASTA_EMAILS: /teste/emails
+      # Simula o nome público: requisições com Host suporte.teste chegam como "da internet"
+      HOST_PUBLICO: suporte.teste
+    volumes:
+      - ./:/app:ro
+      - ${OCPSUPORTE_TESTE_DIR}:/teste
+    ports:
+      - "127.0.0.1:3210:3210"
+    depends_on:
+      mysql-teste:
+        condition: service_healthy

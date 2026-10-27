@@ -1,0 +1,63 @@
+<%- include("../partes/topo", { titulo: numero(ch.id) }) %>
+<div class="cabecalho">
+  <h1><%= numero(ch.id) %> · <%= ch.titulo %></h1>
+  <%- include("../partes/situacao", { status: ch.status }) %>
+</div>
+<div class="chamado">
+  <section>
+    <% if (ch.status === "resolvido") { %>
+    <div class="aviso">
+      <p><strong>A equipe marcou este chamado como resolvido.</strong> O problema foi resolvido?</p>
+      <div class="botoes">
+        <form method="post" action="/portal/chamados/<%= ch.id %>/confirmar" class="inline">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <button class="primario">Sim, pode encerrar</button>
+        </form>
+        <a href="#responder">Não, ainda tenho problema (responda abaixo)</a>
+      </div>
+      <p class="dica">Sem resposta, o chamado é encerrado automaticamente em alguns dias.</p>
+    </div>
+    <% } else if (ch.status === "aguardando_cliente") { %>
+    <p class="aviso"><strong>A equipe precisa da sua resposta</strong> para continuar o atendimento.</p>
+    <% } %>
+
+    <%- include("../partes/mensagens", { mensagens, rotaAnexos: "/portal/anexos" }) %>
+
+    <% if (!["fechado", "cancelado"].includes(ch.status)) { %>
+    <form method="post" action="/portal/chamados/<%= ch.id %>/responder" enctype="multipart/form-data" class="cartao" id="responder">
+      <h2>Responder</h2>
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label><textarea name="texto" rows="5" maxlength="20000" required data-colar-anexos placeholder="Escreva sua mensagem"></textarea></label>
+      <%- include("../partes/campo-anexos") %>
+      <button class="primario">Enviar</button>
+    </form>
+    <% } else { %>
+    <p class="sutil">Chamado encerrado. Se o problema voltar, <a href="/portal/chamados/novo">abra um novo chamado</a>.</p>
+    <% } %>
+  </section>
+
+  <aside class="chamado-lado">
+    <div class="cartao">
+      <dl class="ficha">
+        <dt>Tipo</dt><dd><%= TIPOS[ch.tipo] %></dd>
+        <dt>Solicitante</dt><dd><%= ch.solicitante_nome %></dd>
+        <% if (ch.departamento) { %><dt>Departamento</dt><dd><%= ch.departamento %></dd><% } %>
+        <% if (ch.sistema) { %><dt>Sistema</dt><dd><%= ch.sistema %></dd><% } %>
+        <dt>Impacto</dt><dd><%= IMPACTOS[ch.impacto] %></dd>
+        <dt>Aberto em</dt><dd><%= dataHora(ch.criado_em) %></dd>
+        <% if (ch.responsavel_nome) { %><dt>Atendente</dt><dd><%= ch.responsavel_nome %></dd><% } %>
+      </dl>
+    </div>
+    <% if (!["resolvido", "fechado", "cancelado"].includes(ch.status)) { %>
+    <details class="editar">
+      <summary>Cancelar chamado</summary>
+      <form method="post" action="/portal/chamados/<%= ch.id %>/cancelar" data-confirmar="Cancelar este chamado?">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <label>Motivo <input name="motivo" maxlength="500" placeholder="Ex.: resolvi sozinho"></label>
+        <button class="secundario perigo-borda">Cancelar chamado</button>
+      </form>
+    </details>
+    <% } %>
+  </aside>
+</div>
+<%- include("../partes/rodape") %>

@@ -1,0 +1,11 @@
+<%- include("../partes/topo", { titulo: "Minha equipe" }) %>
+<h1>Minha equipe</h1>
+<section class="cartao" id="usuarios">
+  <h2>Usuários</h2>
+  <%- include("../partes/usuarios-cliente", { usuarios, departamentos, rota: "/portal/equipe" }) %>
+</section>
+<section class="cartao" id="departamentos">
+  <h2>Departamentos</h2>
+  <%- include("../partes/departamentos", { departamentos, rota: "/portal/equipe" }) %>
+</section>
+<%- include("../partes/rodape") %>

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+secrets/*
+!secrets/README.md
+data/
+backups/
+*.pfx
+*.p12
+*.log

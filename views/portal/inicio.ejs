@@ -1,0 +1,30 @@
+<%- include("../partes/topo", { titulo: "Chamados" }) %>
+<div class="cabecalho">
+  <h1><%= usuario.papel === "gestor" ? "Chamados da empresa" : "Meus chamados" %></h1>
+  <a class="botao primario" href="/portal/chamados/novo">Abrir chamado</a>
+</div>
+<nav class="abas">
+  <a href="/portal" class="<%= encerrados ? '' : 'ativa' %>">Em andamento</a>
+  <a href="/portal?ver=encerrados" class="<%= encerrados ? 'ativa' : '' %>">Encerrados</a>
+</nav>
+<div class="cartao">
+<% if (!chamados.length) { %>
+  <p class="sutil"><%= encerrados ? "Nenhum chamado encerrado." : "Nenhum chamado em andamento." %></p>
+<% } else { %>
+  <table>
+    <thead><tr><th>Nº</th><th>Assunto</th><% if (usuario.papel === "gestor") { %><th>Solicitante</th><% } %><th>Situação</th><th>Atualizado</th></tr></thead>
+    <tbody>
+    <% for (const c of chamados) { %>
+      <tr>
+        <td><a href="/portal/chamados/<%= c.id %>"><%= numero(c.id) %></a></td>
+        <td class="quebra"><a href="/portal/chamados/<%= c.id %>"><%= c.titulo %></a><br><span class="sutil"><%= TIPOS[c.tipo] %><%= c.departamento ? " · " + c.departamento : "" %></span></td>
+        <% if (usuario.papel === "gestor") { %><td><%= c.solicitante %></td><% } %>
+        <td><%- include("../partes/situacao", { status: c.status }) %></td>
+        <td><%= dataHora(c.atualizado_em) %></td>
+      </tr>
+    <% } %>
+    </tbody>
+  </table>
+<% } %>
+</div>
+<%- include("../partes/rodape") %>
