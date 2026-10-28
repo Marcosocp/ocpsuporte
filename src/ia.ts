@@ -1,5 +1,6 @@
-// Cliente do modelo local (vLLM, API compatível com OpenAI). A resposta sai sempre no formato JSON pedido
-// (decodificação guiada pelo esquema), então não há texto livre para interpretar.
+// Cliente do modelo local (vLLM, API compatível com OpenAI).
+// A resposta é pedida em JSON pelo prompt, SEM decodificação guiada: com a gramática forçando o formato, este
+// modelo às vezes "travava" emitindo espaços até o limite de tokens. Quem chama valida tudo o que voltar.
 import { config } from "./config.js";
 
 export type Conteudo = string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[];
@@ -7,11 +8,41 @@ export interface MensagemModelo { role: "system" | "user"; content: Conteudo }
 
 export class FalhaModelo extends Error {}
 
-export async function respostaEstruturada<T>(
-  mensagens: MensagemModelo[], esquema: object, maxTokens = 2000,
-): Promise<{ dados: T; ms: number }> {
+/** Extrai o objeto JSON da resposta (tolera ```json ... ``` e texto em volta). */
+export function extrairJson(texto: string): unknown {
+  const semCerca = texto.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+  try {
+    return JSON.parse(semCerca);
+  } catch {
+    const ini = semCerca.indexOf("{");
+    const fim = semCerca.lastIndexOf("}");
+    if (ini >= 0 && fim > ini) return JSON.parse(semCerca.slice(ini, fim + 1));
+    throw new Error("sem JSON");
+  }
+}
+
+/** Pede a resposta em JSON. Se vier cortada ou ilegível, tenta mais uma vez (temperatura 0) antes de falhar. */
+export async function respostaJson(mensagens: MensagemModelo[], maxTokens = 2500): Promise<{ dados: any; ms: number }> {
   if (!config.ia.url) throw new FalhaModelo("IA_URL não configurada");
   const inicio = Date.now();
+  let erro = "";
+  for (const temperatura of [0.2, 0]) {
+    const escolha = await chamar(mensagens, maxTokens, temperatura);
+    const conteudo = String(escolha?.message?.content ?? "");
+    if (escolha?.finish_reason === "length") {
+      erro = `Resposta do modelo cortada (limite de tokens): ${conteudo.slice(0, 200)} … ${conteudo.slice(-200)}`;
+      continue;
+    }
+    try {
+      return { dados: extrairJson(conteudo), ms: Date.now() - inicio };
+    } catch {
+      erro = `Resposta do modelo não é JSON válido: ${conteudo.slice(0, 300)}`;
+    }
+  }
+  throw new FalhaModelo(erro);
+}
+
+async function chamar(mensagens: MensagemModelo[], maxTokens: number, temperatura: number): Promise<any> {
   let resposta: Response;
   try {
     resposta = await fetch(`${config.ia.url}/chat/completions`, {
@@ -21,10 +52,9 @@ export async function respostaEstruturada<T>(
       body: JSON.stringify({
         model: config.ia.modelo,
         messages: mensagens,
-        temperature: 0.2,
+        temperature: temperatura,
         max_tokens: maxTokens,
         chat_template_kwargs: { enable_thinking: false },
-        response_format: { type: "json_schema", json_schema: { name: "resposta", schema: esquema, strict: true } },
       }),
     });
   } catch (e) {
@@ -32,13 +62,7 @@ export async function respostaEstruturada<T>(
   }
   if (!resposta.ok) throw new FalhaModelo(`Modelo respondeu HTTP ${resposta.status}: ${(await resposta.text()).slice(0, 300)}`);
   const corpo = await resposta.json() as any;
-  const escolha = corpo.choices?.[0];
-  if (escolha?.finish_reason === "length") throw new FalhaModelo("Resposta do modelo cortada (limite de tokens)");
-  try {
-    return { dados: JSON.parse(escolha?.message?.content ?? "") as T, ms: Date.now() - inicio };
-  } catch {
-    throw new FalhaModelo("Resposta do modelo não é JSON válido");
-  }
+  return corpo.choices?.[0];
 }
 
 /** Conferência rápida para a tela de configuração. */

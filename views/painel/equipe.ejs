@@ -3,13 +3,14 @@
 <section class="cartao" id="usuarios">
   <h2>Pessoas</h2>
   <table>
-    <thead><tr><th>Nome</th><th>Perfil</th><th>Áreas</th><th>Acesso</th><th></th></tr></thead>
+    <thead><tr><th>Nome</th><th>Perfil</th><th>Clientes</th><th>Áreas</th><th>Acesso</th><th></th></tr></thead>
     <tbody>
     <% for (const u of usuarios) { %>
       <tr class="<%= u.ativo ? '' : 'inativo' %>">
         <td class="quebra"><%= u.nome %><br><span class="sutil"><%= u.email %><%= u.celular ? " · " + formatarCelular(u.celular) : "" %></span></td>
         <td><%= u.papel === "admin" ? "Administrador" : "Analista" %><%= u.ativo ? "" : " (inativo)" %></td>
-        <td class="quebra"><%= areas.filter((a) => u.area_ids.includes(a.id)).map((a) => a.nome).join(", ") || "—" %></td>
+        <td class="quebra"><%= u.papel === "admin" || u.todos_clientes ? "Todos" : clientes.filter((c) => u.cliente_ids.includes(c.id)).map((c) => c.nome).join(", ") %></td>
+        <td class="quebra"><%= u.papel === "admin" || u.todas_areas ? "Todas" : areas.filter((a) => u.area_ids.includes(a.id)).map((a) => a.nome).join(", ") || "—" %></td>
         <td><%= u.acesso_definido ? (u.ultimo_login ? "Último login " + dataHora(u.ultimo_login) : "Senha definida") : "Convite pendente" %>
           <% if (!u.acesso_definido && u.ativo) { %>
           <form method="post" action="/painel/equipe/usuarios/<%= u.id %>/convite" class="inline">
@@ -28,12 +29,7 @@
                 <option value="admin" <%= u.papel === "admin" ? "selected" : "" %>>Administrador</option>
               </select>
             </label>
-            <p class="rotulo">Áreas</p>
-            <div class="checks">
-              <% for (const a of areas.filter((a) => a.ativo || u.area_ids.includes(a.id))) { %>
-                <label class="check"><input type="checkbox" name="areas" value="<%= a.id %>" <%= u.area_ids.includes(a.id) ? "checked" : "" %>> <%= a.nome %></label>
-              <% } %>
-            </div>
+            <%- include("../partes/escopo-analista", { u, areas, clientes }) %>
             <label class="check"><input type="checkbox" name="ativo" value="1" <%= u.ativo ? "checked" : "" %>> Ativo</label>
             <button class="primario">Salvar</button>
           </form>
@@ -52,11 +48,7 @@
         <label>Celular (WhatsApp) <input name="celular" maxlength="20"></label>
         <label>Perfil <select name="papel"><option value="analista">Analista</option><option value="admin">Administrador</option></select></label>
       </div>
-      <p class="rotulo">Áreas</p>
-      <div class="checks">
-        <% for (const a of areas.filter((a) => a.ativo)) { %><label class="check"><input type="checkbox" name="areas" value="<%= a.id %>"> <%= a.nome %></label><% } %>
-      </div>
-      <p class="dica">O analista vê os chamados das áreas dele e os atribuídos a ele. O administrador vê tudo e distribui.</p>
+      <%- include("../partes/escopo-analista", { u: null, areas, clientes }) %>
       <button class="primario">Criar e enviar convite</button>
     </form>
   </details>

@@ -1,0 +1,27 @@
+<%# Clientes e áreas que a pessoa atende. Parâmetros: u (ou null para novo), areas, clientes. %>
+<% const todosClientes = u ? !!u.todos_clientes : true; const todasAreas = u ? !!u.todas_areas : false; %>
+<fieldset class="escopo">
+  <legend>Clientes que atende</legend>
+  <div class="opcoes-radio">
+    <label><input type="radio" name="clientes_modo" value="todos" <%= todosClientes ? "checked" : "" %>> Todos os clientes</label>
+    <label><input type="radio" name="clientes_modo" value="selecionados" <%= todosClientes ? "" : "checked" %>> Só os selecionados</label>
+  </div>
+  <div class="checks lista-escopo">
+    <% for (const c of clientes.filter((c) => c.ativo || (u && u.cliente_ids.includes(c.id)))) { %>
+      <label class="check"><input type="checkbox" name="clientes" value="<%= c.id %>" <%= u && u.cliente_ids.includes(c.id) ? "checked" : "" %>> <%= c.nome %></label>
+    <% } %>
+  </div>
+</fieldset>
+<fieldset class="escopo">
+  <legend>Áreas</legend>
+  <div class="opcoes-radio">
+    <label><input type="radio" name="areas_modo" value="todas" <%= todasAreas ? "checked" : "" %>> Todas as áreas</label>
+    <label><input type="radio" name="areas_modo" value="selecionadas" <%= todasAreas ? "" : "checked" %>> Só as selecionadas</label>
+  </div>
+  <div class="checks lista-escopo">
+    <% for (const a of areas.filter((a) => a.ativo || (u && u.area_ids.includes(a.id)))) { %>
+      <label class="check"><input type="checkbox" name="areas" value="<%= a.id %>" <%= u && u.area_ids.includes(a.id) ? "checked" : "" %>> <%= a.nome %></label>
+    <% } %>
+  </div>
+</fieldset>
+<p class="dica">O analista vê os chamados atribuídos a ele e os que são, ao mesmo tempo, de um cliente e de uma área que ele atende. Analista alocado num cliente: “só os selecionados” (o cliente) + “todas as áreas”. Para o administrador isto não se aplica (vê tudo).</p>

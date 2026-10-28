@@ -12,6 +12,7 @@ import { buscarTriagem, concluirAgora, enfileirar } from "../triagem.js";
 import { situacaoPrazos } from "../prazos.js";
 import { ErroHoras, doChamado, lancar, remover } from "../horas.js";
 import { dataLocal } from "../expediente.js";
+import { clientesDaEquipe, equipeDoCliente } from "../escopo.js";
 
 export const rotasPainel = Router();
 rotasPainel.use(exigirEquipe);
@@ -70,7 +71,7 @@ rotasPainel.get("/", async (req, res) => {
      ORDER BY ${fila === "encerrados" ? "c.atualizado_em DESC" : ORDEM_PRAZO} LIMIT 300`,
     [...visivel.params, ...valores(fila), ...(clienteId ? [clienteId] : [])],
   );
-  const [clientes] = await pool.query<any[]>("SELECT id, nome FROM clientes WHERE ativo ORDER BY nome");
+  const clientes = await clientesDaEquipe(u);
   const agora = new Date();
   for (const c of chamados) c.prazos = situacaoPrazos(c, agora);
   res.render("painel/fila", { chamados, fila, filas: FILAS, contagens, clientes, clienteId });
@@ -78,11 +79,15 @@ rotasPainel.get("/", async (req, res) => {
 
 // --- Abrir chamado em nome do cliente (ex.: pedido por telefone) ---
 
-async function opcoesNovo(solicitanteId: number | null) {
-  const [solicitantes] = await pool.query<any[]>(
-    `SELECT u.id, u.nome, u.email, c.nome AS cliente, u.cliente_id FROM usuarios u JOIN clientes c ON c.id = u.cliente_id
-     WHERE u.ativo AND c.ativo ORDER BY c.nome, u.nome`,
-  );
+async function opcoesNovo(req: Request, solicitanteId: number | null) {
+  const atendidos = (await clientesDaEquipe(req.session.usuario!)).map((c) => c.id);
+  const [solicitantes] = atendidos.length
+    ? await pool.query<any[]>(
+      `SELECT u.id, u.nome, u.email, c.nome AS cliente, u.cliente_id FROM usuarios u JOIN clientes c ON c.id = u.cliente_id
+       WHERE u.ativo AND c.ativo AND c.id IN (?) ORDER BY c.nome, u.nome`,
+      [atendidos],
+    )
+    : [[]];
   const solicitante = solicitantes.find((s) => s.id === solicitanteId) ?? null;
   if (!solicitante) return { solicitantes, solicitante, departamentos: [], sistemas: [] };
   const [departamentos] = await pool.query<any[]>(
@@ -97,11 +102,11 @@ async function opcoesNovo(solicitanteId: number | null) {
 const formularioVazio = { titulo: "", tipo: "", impacto: "pessoa", departamento_id: "", sistema_id: "", descricao: "" };
 
 rotasPainel.get("/chamados/novo", async (req, res) => {
-  res.render("painel/novo", { ...(await opcoesNovo(id(req.query.solicitante))), valores: formularioVazio, erro: null });
+  res.render("painel/novo", { ...(await opcoesNovo(req, id(req.query.solicitante))), valores: formularioVazio, erro: null });
 });
 
 rotasPainel.post("/chamados/novo", receberUpload, conferirCsrf, async (req, res) => {
-  const opcoes = await opcoesNovo(id(req.body.solicitante_id));
+  const opcoes = await opcoesNovo(req, id(req.body.solicitante_id));
   const valores = { ...formularioVazio, ...req.body };
   const falhar = (erro: string) => res.status(400).render("painel/novo", { ...opcoes, valores, erro });
   if (res.locals.erroUpload) return falhar(res.locals.erroUpload);
@@ -144,11 +149,8 @@ rotasPainel.get("/chamados/:id", async (req, res) => {
   const ch = await chamadoOu404(req, res);
   if (!ch) return;
   const [areas] = await pool.query<any[]>("SELECT id, nome FROM areas WHERE ativo ORDER BY nome");
-  const [equipe] = await pool.query<any[]>(
-    `SELECT u.id, u.nome, GROUP_CONCAT(a.nome ORDER BY a.nome SEPARATOR ', ') AS areas
-     FROM usuarios u LEFT JOIN analista_areas aa ON aa.usuario_id = u.id LEFT JOIN areas a ON a.id = aa.area_id
-     WHERE u.ativo AND u.papel IN ('admin', 'analista') GROUP BY u.id ORDER BY u.nome`,
-  );
+  // Só quem atende este cliente pode ser responsável.
+  const equipe = await equipeDoCliente(ch.cliente_id);
   const f = filtroVisibilidade(req.session.usuario!);
   const [outros] = await pool.query<any[]>(
     `SELECT c.id, c.titulo, c.status, c.criado_em FROM chamados c WHERE c.solicitante_id = ? AND c.id <> ? AND ${f.sql}

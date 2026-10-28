@@ -10,6 +10,7 @@ import { salvarAnexos } from "./anexos.js";
 import * as modelos from "./modelos-email.js";
 import { clienteRespondeu, enfileirar, interromperTriagem, triagemAtiva } from "./triagem.js";
 import { aposMudanca } from "./prazos.js";
+import { atende, dedicados } from "./escopo.js";
 
 export const TIPOS = { incidente: "Erro / problema", duvida: "Dúvida", solicitacao: "Solicitação", melhoria: "Melhoria" } as const;
 export const IMPACTOS = { pessoa: "Só eu", setor: "Meu setor", empresa: "A empresa toda / operação parada" } as const;
@@ -34,8 +35,11 @@ export const prioridadeInicial = (impacto: string) => (impacto === "empresa" ? "
 export function filtroVisibilidade(u: UsuarioSessao): { sql: string; params: unknown[] } {
   switch (u.papel) {
     case "admin": return { sql: "TRUE", params: [] };
+    // Analista: os atribuídos a ele + os que caem nos clientes E nas áreas que ele atende ("todos"/"todas" ou lista).
     case "analista": return {
-      sql: "(c.responsavel_id = ? OR c.area_id IN (SELECT area_id FROM analista_areas WHERE usuario_id = ?))",
+      sql: `(c.responsavel_id = ? OR EXISTS (SELECT 1 FROM usuarios ua WHERE ua.id = ?
+              AND (ua.todos_clientes OR c.cliente_id IN (SELECT cliente_id FROM analista_clientes WHERE usuario_id = ua.id))
+              AND (ua.todas_areas OR c.area_id IN (SELECT area_id FROM analista_areas WHERE usuario_id = ua.id))))`,
       params: [u.id, u.id],
     };
     case "gestor": return { sql: "c.cliente_id = ?", params: [u.clienteId] };
@@ -119,6 +123,12 @@ async function administradores(): Promise<{ nome: string; email: string }[]> {
   return linhas;
 }
 
+/** Chamado novo: administradores + analistas alocados naquele cliente (sem repetir). */
+export async function avisadosDeChamadoNovo(clienteId: number): Promise<{ nome: string; email: string }[]> {
+  const todos = [...(await administradores()), ...(await dedicados(clienteId))];
+  return todos.filter((p, i) => todos.findIndex((q) => q.email === p.email) === i);
+}
+
 // Quem da OCP recebe a resposta do cliente: o responsável ou, sem responsável, os administradores.
 async function equipeDoChamado(ch: any): Promise<{ nome: string; email: string }[]> {
   return ch.responsavel_id ? [{ nome: ch.responsavel_nome, email: ch.responsavel_email }] : administradores();
@@ -161,8 +171,8 @@ export async function abrirChamado(req: Request, dados: NovoChamado, arquivos: E
     // Aberto pela equipe em nome do cliente: só gera a ficha, sem perguntas.
     await enfileirar(id, dados.canal === "painel");
   } else {
-    for (const adm of await administradores()) {
-      if (adm.email !== autor.email) emails.push(modelos.novoChamado(adm, ch, ch.solicitante_nome, dados.descricao));
+    for (const p of await avisadosDeChamadoNovo(dados.clienteId)) {
+      if (p.email !== autor.email) emails.push(modelos.novoChamado(p, ch, ch.solicitante_nome, dados.descricao));
     }
   }
   avisar(emails);
@@ -244,10 +254,9 @@ export async function distribuir(
 ): Promise<void> {
   const u = req.session.usuario!;
   if (dados.responsavelId) {
-    const [r] = await pool.query<any[]>(
-      "SELECT id FROM usuarios WHERE id = ? AND ativo AND papel IN ('admin', 'analista')", [dados.responsavelId],
-    );
-    if (!r.length) throw new RegraChamado("Responsável inválido.");
+    if (!(await atende(dados.responsavelId, ch.cliente_id))) {
+      throw new RegraChamado("Esse analista não atende este cliente (veja os clientes dele em Equipe).");
+    }
   }
   if (dados.areaId) {
     const [a] = await pool.query<any[]>("SELECT id FROM areas WHERE id = ? AND ativo", [dados.areaId]);

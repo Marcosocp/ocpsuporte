@@ -160,3 +160,9 @@ table.horas td:last-child { white-space: nowrap; text-align: right; }
   .cartao { border: 0; padding: 0; }
   a { color: #000; text-decoration: none; }
 }
+
+/* Escopo do analista: a lista só aparece em "só os selecionados" */
+fieldset.escopo { border: 1px solid var(--borda); border-radius: 8px; padding: .5rem .75rem; margin: 0 0 .75rem; }
+fieldset.escopo legend { font-weight: 500; padding: 0 .25rem; }
+fieldset.escopo:has(input[value="todos"]:checked) .lista-escopo,
+fieldset.escopo:has(input[value="todas"]:checked) .lista-escopo { display: none; }

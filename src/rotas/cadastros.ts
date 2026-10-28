@@ -13,6 +13,7 @@ import { cnpjValido, emailValido, limparDigitos, normalizarCelular } from "../va
 import { config as configApp } from "../config.js";
 import { modeloDisponivel } from "../ia.js";
 import { carregarFeriados, recalcularAbertos } from "../prazos.js";
+import { dedicados } from "../escopo.js";
 import { consumo, csv, lancamentosDoMes, mesOuAtual, relatorioMes } from "../horas.js";
 
 export const rotasCadastros = Router();
@@ -89,6 +90,7 @@ rotasCadastros.get("/clientes/:id", async (req, res) => {
   const [prazosCliente] = await pool.query<any[]>("SELECT * FROM prazos_cliente WHERE cliente_id = ?", [cliente.id]);
   res.render("painel/cliente", {
     cliente, contratos, sistemas, categorias: CATEGORIAS, consumoMes: await consumo(cliente.id, mesOuAtual(undefined)),
+    alocados: await dedicados(cliente.id),
     prazosPadrao: Object.fromEntries(prazosPadrao.map((p) => [p.prioridade, p])),
     prazosCliente: Object.fromEntries(prazosCliente.map((p) => [p.prioridade, p])),
     usuarios: await usuariosDoCliente(cliente.id),
@@ -207,26 +209,45 @@ rotasCadastros.post("/clientes/:id/sistemas/:sistema", (req, res) =>
 rotasCadastros.get("/equipe", async (_req, res) => {
   const [usuarios] = await pool.query<any[]>(
     `SELECT u.id, u.nome, u.email, u.celular, u.papel, u.ativo, u.ultimo_login, u.senha_hash IS NOT NULL AS acesso_definido,
-            GROUP_CONCAT(aa.area_id) AS area_ids
-     FROM usuarios u LEFT JOIN analista_areas aa ON aa.usuario_id = u.id
-     WHERE u.cliente_id IS NULL GROUP BY u.id ORDER BY u.ativo DESC, u.nome`,
+            u.todos_clientes, u.todas_areas,
+            (SELECT GROUP_CONCAT(area_id) FROM analista_areas WHERE usuario_id = u.id) AS area_ids,
+            (SELECT GROUP_CONCAT(cliente_id) FROM analista_clientes WHERE usuario_id = u.id) AS cliente_ids
+     FROM usuarios u WHERE u.cliente_id IS NULL ORDER BY u.ativo DESC, u.nome`,
   );
-  for (const u of usuarios) u.area_ids = u.area_ids ? String(u.area_ids).split(",").map(Number) : [];
+  const lista = (v: unknown) => (v ? String(v).split(",").map(Number) : []);
+  for (const u of usuarios) {
+    u.area_ids = lista(u.area_ids);
+    u.cliente_ids = lista(u.cliente_ids);
+  }
   const [areas] = await pool.query<any[]>("SELECT * FROM areas ORDER BY ativo DESC, nome");
-  res.render("painel/equipe", { usuarios, areas });
+  const [clientes] = await pool.query<any[]>("SELECT id, nome, ativo FROM clientes ORDER BY ativo DESC, nome");
+  res.render("painel/equipe", { usuarios, areas, clientes });
 });
 
-async function areasValidas(valor: unknown): Promise<number[]> {
-  const pedidas = ids(valor);
-  if (!pedidas.length) return [];
-  const [linhas] = await pool.query<any[]>("SELECT id FROM areas WHERE id IN (?)", [pedidas]);
-  if (linhas.length !== pedidas.length) throw new ErroCadastro("Área inválida.");
-  return pedidas;
+async function idsValidos(tabela: "areas" | "clientes", valor: unknown, rotulo: string): Promise<number[]> {
+  const pedidos = ids(valor);
+  if (!pedidos.length) return [];
+  const [linhas] = await pool.query<any[]>(`SELECT id FROM ${tabela} WHERE id IN (?)`, [pedidos]);
+  if (linhas.length !== pedidos.length) throw new ErroCadastro(`${rotulo} inválido(a).`);
+  return pedidos;
 }
 
-async function gravarAreas(usuarioId: number, areas: number[]) {
+/** Escopo do analista: clientes (todos ou lista) e áreas (todas ou lista). Sem o campo do modo = como antes. */
+async function escopoDoFormulario(body: any) {
+  const todosClientes = body.clientes_modo !== "selecionados";
+  const todasAreas = body.areas_modo === "todas";
+  const clientes = todosClientes ? [] : await idsValidos("clientes", body.clientes, "Cliente");
+  const areas = todasAreas ? [] : await idsValidos("areas", body.areas, "Área");
+  if (!todosClientes && !clientes.length) throw new ErroCadastro("Marque ao menos um cliente (ou escolha “todos os clientes”).");
+  return { todosClientes, todasAreas, clientes, areas };
+}
+
+async function gravarEscopo(usuarioId: number, e: Awaited<ReturnType<typeof escopoDoFormulario>>) {
+  await pool.query("UPDATE usuarios SET todos_clientes = ?, todas_areas = ? WHERE id = ?", [e.todosClientes, e.todasAreas, usuarioId]);
   await pool.query("DELETE FROM analista_areas WHERE usuario_id = ?", [usuarioId]);
-  if (areas.length) await pool.query("INSERT INTO analista_areas (usuario_id, area_id) VALUES ?", [areas.map((a) => [usuarioId, a])]);
+  if (e.areas.length) await pool.query("INSERT INTO analista_areas (usuario_id, area_id) VALUES ?", [e.areas.map((a) => [usuarioId, a])]);
+  await pool.query("DELETE FROM analista_clientes WHERE usuario_id = ?", [usuarioId]);
+  if (e.clientes.length) await pool.query("INSERT INTO analista_clientes (usuario_id, cliente_id) VALUES ?", [e.clientes.map((c) => [usuarioId, c])]);
 }
 
 rotasCadastros.post("/equipe/usuarios", (req, res) => salvar(req, res, "/painel/equipe", async () => {
@@ -236,12 +257,12 @@ rotasCadastros.post("/equipe/usuarios", (req, res) => salvar(req, res, "/painel/
   const papel = req.body.papel === "admin" ? "admin" : "analista";
   if (!nome || !emailValido(email)) throw new ErroCadastro("Informe nome e e-mail válidos.");
   if (texto(req.body.celular, 30) && !celular) throw new ErroCadastro("Celular inválido. Use DDD + número.");
-  const areas = await areasValidas(req.body.areas);
+  const escopo = await escopoDoFormulario(req.body);
   const [existe] = await pool.query<any[]>("SELECT id FROM usuarios WHERE email = ?", [email]);
   if (existe.length) throw new ErroCadastro("Já existe um usuário com esse e-mail.");
   const [r] = await pool.query<any>("INSERT INTO usuarios (papel, nome, email, celular) VALUES (?, ?, ?, ?)", [papel, nome, email, celular]);
-  await gravarAreas(r.insertId, areas);
-  await registrar(req, "usuario_criado", { usuario_id: r.insertId, email, papel, areas });
+  await gravarEscopo(r.insertId, escopo);
+  await registrar(req, "usuario_criado", { usuario_id: r.insertId, email, papel, ...escopo });
   if (!(await convidar(r.insertId))) return "Usuário criado, mas o e-mail de convite falhou. Use “reenviar convite”.";
 }, "Usuário criado. Ele recebeu um e-mail para definir a senha."));
 
@@ -257,12 +278,12 @@ rotasCadastros.post("/equipe/usuarios/:id", (req, res) => salvar(req, res, "/pai
   if (usuarioId === req.session.usuario!.id && (papel !== alvo.papel || !ativo)) {
     throw new ErroCadastro("Você não pode mudar o próprio perfil nem se desativar.");
   }
-  const areas = await areasValidas(req.body.areas);
+  const escopo = await escopoDoFormulario(req.body);
   await pool.query("UPDATE usuarios SET nome = ?, celular = ?, papel = ?, ativo = ? WHERE id = ?",
     [texto(req.body.nome, 150) || alvo.nome, celular, papel, ativo, usuarioId]);
-  await gravarAreas(usuarioId, areas);
+  await gravarEscopo(usuarioId, escopo);
   if (!ativo || papel !== alvo.papel) await derrubarAcessos([usuarioId]);
-  await registrar(req, "usuario_alterado", { usuario_id: usuarioId, papel, ativo, areas });
+  await registrar(req, "usuario_alterado", { usuario_id: usuarioId, papel, ativo, ...escopo });
 }, "Usuário atualizado."));
 
 rotasCadastros.post("/equipe/usuarios/:id/convite", (req, res) =>

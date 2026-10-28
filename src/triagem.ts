@@ -10,9 +10,10 @@ import { config } from "./config.js";
 import { registrar } from "./auditoria.js";
 import { avisar, type Email } from "./email.js";
 import * as modelos from "./modelos-email.js";
-import { FalhaModelo, respostaEstruturada, type MensagemModelo } from "./ia.js";
-import { IMPACTOS, PRIORIDADES, SELECT_CHAMADO, TIPOS } from "./chamados.js";
+import { FalhaModelo, respostaJson, type MensagemModelo } from "./ia.js";
+import { IMPACTOS, PRIORIDADES, SELECT_CHAMADO, TIPOS, avisadosDeChamadoNovo } from "./chamados.js";
 import { aposMudanca } from "./prazos.js";
+import { equipeDoCliente } from "./escopo.js";
 
 const MAX_TENTATIVAS = 3;
 const MAX_IMAGENS = 3;
@@ -60,12 +61,8 @@ async function contexto(ch: any) {
     [ch.cliente_id],
   );
   const [areas] = await pool.query<any[]>("SELECT id, nome, descricao FROM areas WHERE ativo ORDER BY nome");
-  const [analistas] = await pool.query<any[]>(
-    `SELECT u.id, u.nome, u.papel, GROUP_CONCAT(DISTINCT a.nome ORDER BY a.nome SEPARATOR ', ') AS areas,
-       (SELECT COUNT(*) FROM chamados c WHERE c.responsavel_id = u.id AND c.status NOT IN ('resolvido', 'fechado', 'cancelado')) AS abertos
-     FROM usuarios u LEFT JOIN analista_areas aa ON aa.usuario_id = u.id LEFT JOIN areas a ON a.id = aa.area_id AND a.ativo
-     WHERE u.ativo AND u.papel IN ('admin', 'analista') GROUP BY u.id ORDER BY u.nome`,
-  );
+  // Só quem atende este cliente pode ser sugerido; os alocados nele vêm marcados.
+  const analistas = await equipeDoCliente(ch.cliente_id);
   const [roteiro] = await pool.query<any[]>("SELECT instrucoes FROM roteiros_triagem WHERE tipo = ?", [ch.tipo]);
   const [mensagens] = await pool.query<any[]>(
     `SELECT m.id, m.texto, m.origem, m.criado_em, u.papel FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
@@ -146,44 +143,67 @@ Regras:
 - Use o mapa de sistemas do cliente para identificar o sistema e como ele é acessado (ex.: Protheus pelo Workspace).
 - Prioridade: crítica = empresa ou operação parada; alta = um setor parado, ou prazo legal/fiscal; normal = atrapalha mas
   há como contornar; baixa = dúvida ou melhoria sem urgência.
-- Área: a que combina com o assunto. Responsável: um analista dessa área, de preferência o com menos chamados abertos.
-  Use "nenhuma"/"nenhum" quando não houver opção adequada.
+- Área: a que combina com o assunto. Responsável: se houver analista ALOCADO NESTE CLIENTE que atenda a área, prefira-o;
+  senão, um analista dessa área, de preferência o com menos chamados abertos.
+  Use null quando não houver opção adequada.
 - Ficha (resumo, passos, hipóteses, próximos passos) é para o ANALISTA: técnica, objetiva, baseada no relato e nos
   chamados parecidos. "faltando" lista o que ainda não se sabe.
 - mensagem_cliente: se for perguntar, uma frase curta de introdução às perguntas (as perguntas vão em "perguntas");
   se for concluir, agradeça e diga que o chamado foi encaminhado à equipe de suporte.`;
 
-function esquema(ctx: Awaited<ReturnType<typeof contexto>>, podePerguntar: boolean, similares: any[]) {
-  const ids = (linhas: any[]) => linhas.map((l) => String(l.id));
-  const textos = { type: "array", items: { type: "string" } };
+// Formato da resposta. O modelo escreve o JSON livremente (sem decodificação guiada: com a gramática forçando
+// o formato, ele às vezes "travava" emitindo espaços até o limite) e TUDO é conferido em validarFicha antes de usar.
+function formato(podePerguntar: boolean): string {
+  return `Responda SOMENTE com um objeto JSON (sem texto antes ou depois, sem \`\`\`), com estes campos:
+${podePerguntar ? `- "decisao": "perguntar" ou "concluir"
+- "perguntas": lista de textos (no máximo 4; vazia se for concluir)
+` : `- "decisao": "concluir" (não é mais possível perguntar)
+`}- "tipo": "incidente", "duvida", "solicitacao" ou "melhoria"
+- "sistema_id": id do mapa de sistemas do cliente, ou null
+- "impacto": "pessoa", "setor" ou "empresa"
+- "prioridade": "baixa", "normal", "alta" ou "critica"
+- "area_id": id de uma área da lista, ou null
+- "responsavel_id": id de alguém da equipe da lista, ou null
+- "justificativa": texto (por que essa prioridade, área e responsável)
+- "resumo": texto
+- "informacoes": lista de objetos {"item": texto, "valor": texto}
+- "passos_reproducao", "faltando", "hipoteses", "proximos_passos", "alertas": listas de textos
+- "parecidos": lista de ids dos chamados parecidos que são de fato relevantes (pode ser vazia)
+- "mensagem_cliente": texto`;
+}
+
+const texto = (v: unknown, max = 2000) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+const textos = (v: unknown, maxItens = 20) => (Array.isArray(v) ? v.map((x) => texto(x, 1000)).filter(Boolean).slice(0, maxItens) : []);
+const naLista = (v: unknown, linhas: any[]) => (v !== null && v !== undefined && linhas.some((l) => String(l.id) === String(v)) ? String(v) : null);
+
+/** Confere e normaliza a resposta do modelo: só valores permitidos, textos e listas com limite. */
+function validarFicha(bruto: any, ch: any, ctx: Awaited<ReturnType<typeof contexto>>, podePerguntar: boolean, similares: any[]): Ficha {
+  if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) throw new FalhaModelo("Resposta do modelo não é um objeto JSON");
+  const opcao = <T extends object>(opcoes: T, v: unknown, padrao: keyof T) => (typeof v === "string" && Object.hasOwn(opcoes, v) ? v as keyof T : padrao);
+  const perguntas = podePerguntar ? textos(bruto.perguntas, 4) : [];
+  const resumo = texto(bruto.resumo, 3000);
+  if (!resumo) throw new FalhaModelo("Resposta do modelo sem resumo");
   return {
-    type: "object",
-    additionalProperties: false,
-    required: ["decisao", "mensagem_cliente", "perguntas", "tipo", "sistema_id", "impacto", "prioridade", "area_id", "responsavel_id",
-      "justificativa", "resumo", "informacoes", "passos_reproducao", "faltando", "hipoteses", "proximos_passos", "alertas", "parecidos"],
-    properties: {
-      decisao: { type: "string", enum: podePerguntar ? ["perguntar", "concluir"] : ["concluir"] },
-      mensagem_cliente: { type: "string" },
-      perguntas: { ...textos, maxItems: podePerguntar ? 4 : 0 },
-      tipo: { type: "string", enum: Object.keys(TIPOS) },
-      sistema_id: { type: "string", enum: ["nenhum", ...ids(ctx.sistemas)] },
-      impacto: { type: "string", enum: Object.keys(IMPACTOS) },
-      prioridade: { type: "string", enum: Object.keys(PRIORIDADES) },
-      area_id: { type: "string", enum: ["nenhuma", ...ids(ctx.areas)] },
-      responsavel_id: { type: "string", enum: ["nenhum", ...ids(ctx.analistas)] },
-      justificativa: { type: "string" },
-      resumo: { type: "string" },
-      informacoes: {
-        type: "array",
-        items: { type: "object", additionalProperties: false, required: ["item", "valor"], properties: { item: { type: "string" }, valor: { type: "string" } } },
-      },
-      passos_reproducao: textos,
-      faltando: textos,
-      hipoteses: textos,
-      proximos_passos: textos,
-      alertas: textos,
-      parecidos: similares.length ? { type: "array", items: { type: "string", enum: ids(similares) } } : { type: "array", maxItems: 0, items: { type: "string" } },
-    },
+    decisao: podePerguntar && bruto.decisao === "perguntar" && perguntas.length ? "perguntar" : "concluir",
+    perguntas,
+    mensagem_cliente: texto(bruto.mensagem_cliente, 1500),
+    tipo: opcao(TIPOS, bruto.tipo, ch.tipo),
+    sistema_id: naLista(bruto.sistema_id, ctx.sistemas) ?? "nenhum",
+    impacto: opcao(IMPACTOS, bruto.impacto, ch.impacto),
+    prioridade: opcao(PRIORIDADES, bruto.prioridade, ch.prioridade),
+    area_id: naLista(bruto.area_id, ctx.areas) ?? "nenhuma",
+    responsavel_id: naLista(bruto.responsavel_id, ctx.analistas) ?? "nenhum",
+    justificativa: texto(bruto.justificativa),
+    resumo,
+    informacoes: Array.isArray(bruto.informacoes)
+      ? bruto.informacoes.map((i: any) => ({ item: texto(i?.item, 200), valor: texto(i?.valor, 1000) })).filter((i: any) => i.item && i.valor).slice(0, 30)
+      : [],
+    passos_reproducao: textos(bruto.passos_reproducao),
+    faltando: textos(bruto.faltando),
+    hipoteses: textos(bruto.hipoteses),
+    proximos_passos: textos(bruto.proximos_passos),
+    alertas: textos(bruto.alertas, 10),
+    parecidos: (Array.isArray(bruto.parecidos) ? bruto.parecidos : []).map((x: unknown) => naLista(x, similares)).filter((x: string | null): x is string => !!x),
   };
 }
 
@@ -208,8 +228,8 @@ ${lista(ctx.sistemas.map((s) => `${s.id}: ${s.nome} — ${s.categoria} — ${s.a
 Áreas da OCP (id: nome — descrição):
 ${lista(ctx.areas.map((a) => `${a.id}: ${a.nome}${a.descricao ? ` — ${a.descricao}` : ""}`))}
 
-Equipe da OCP (id: nome — áreas — chamados abertos):
-${lista(ctx.analistas.map((a) => `${a.id}: ${a.nome} — ${a.areas ?? "sem área"}${a.papel === "admin" ? " (administrador)" : ""} — ${a.abertos}`))}
+Equipe da OCP que atende este cliente (id: nome — áreas — chamados abertos):
+${lista(ctx.analistas.map((a) => `${a.id}: ${a.nome} — ${a.areas ?? "sem área"}${a.papel === "admin" ? " (administrador)" : ""}${a.dedicado ? " (ALOCADO NESTE CLIENTE)" : ""} — ${a.abertos}`))}
 
 Roteiro para este tipo de chamado:
 ${ctx.roteiro}
@@ -230,8 +250,8 @@ ${anexos.imagens.length ? `\n${anexos.imagens.length} imagem(ns) anexada(s) a se
     ? [{ type: "text", text: texto }, ...anexos.imagens.map((url) => ({ type: "image_url" as const, image_url: { url } }))]
     : texto;
   return {
-    mensagens: [{ role: "system", content: SISTEMA }, { role: "user", content: conteudo }] as MensagemModelo[],
-    esquema: esquema(ctx, podePerguntar, similares),
+    mensagens: [{ role: "system", content: `${SISTEMA}\n\n${formato(podePerguntar)}` }, { role: "user", content: conteudo }] as MensagemModelo[],
+    formato: formato(podePerguntar),
     ctx,
     similares,
   };
@@ -277,11 +297,6 @@ function semSenhas<T>(valor: T, senhas: string[]): T {
   return JSON.parse(json);
 }
 
-async function administradores(): Promise<{ nome: string; email: string }[]> {
-  const [linhas] = await pool.query<any[]>("SELECT nome, email FROM usuarios WHERE papel = 'admin' AND ativo");
-  return linhas;
-}
-
 async function mensagemIa(chamadoId: number, texto: string): Promise<void> {
   await pool.query("INSERT INTO mensagens (chamado_id, autor_id, origem, visibilidade, texto) VALUES (?, NULL, 'ia', 'publica', ?)", [chamadoId, texto]);
 }
@@ -300,10 +315,10 @@ async function processar(chamadoId: number): Promise<void> {
   const podePerguntar = emTriagem && !triagem.concluir && triagem.rodada < config.ia.maxRodadas && ch.canal !== "painel";
 
   const pedido = await montarPedido(ch, triagem, podePerguntar);
-  const resposta = await respostaEstruturada<Ficha>(pedido.mensagens, pedido.esquema);
+  const resposta = await respostaJson(pedido.mensagens);
   const ms = resposta.ms;
   const textoCliente = pedido.ctx.mensagens.filter((m) => m.origem === "pessoa").map((m) => m.texto).join("\n");
-  const f = semSenhas(resposta.dados, senhasCitadas(`${ch.titulo}\n${textoCliente}`));
+  const f = semSenhas(validarFicha(resposta.dados, ch, pedido.ctx, podePerguntar, pedido.similares), senhasCitadas(`${ch.titulo}\n${textoCliente}`));
 
   // O chamado pode ter mudado enquanto o modelo pensava (equipe assumiu, cliente cancelou).
   const [agora] = await pool.query<any[]>("SELECT status FROM chamados WHERE id = ?", [chamadoId]);
@@ -316,6 +331,17 @@ async function processar(chamadoId: number): Promise<void> {
     idOuNulo(f.area_id), idOuNulo(f.responsavel_id), f.prioridade, f.tipo,
   ];
   const ficha = JSON.stringify({ ...f, parecidos: f.parecidos.map(Number), sistema_id: idOuNulo(f.sistema_id) });
+
+  // Regra da OCP (no código, não no modelo): havendo analista alocado neste cliente que atenda a área sugerida,
+  // a sugestão de responsável é ele (o com menos chamados abertos, se houver mais de um).
+  const area = idOuNulo(f.area_id);
+  const alocados = pedido.ctx.analistas
+    .filter((a: any) => a.dedicado && (a.todas_areas || area === null || a.area_ids.includes(area)))
+    .sort((a: any, b: any) => a.abertos - b.abertos);
+  if (alocados.length && !alocados.some((a: any) => String(a.id) === f.responsavel_id)) {
+    f.responsavel_id = String(alocados[0].id);
+    f.justificativa = `${f.justificativa} Responsável: ${alocados[0].nome}, alocado neste cliente.`.trim();
+  }
 
   // O modelo às vezes insiste no que o cliente já respondeu (ou disse não saber): essas perguntas caem.
   const anteriores = perguntasAnteriores(pedido.ctx.mensagens);
@@ -377,7 +403,7 @@ async function avisarEquipe(ch: any, f: Ficha | null): Promise<void> {
       alertas: f.alertas,
     }
     : null;
-  const emails: Email[] = (await administradores()).map((adm) => modelos.novoChamado(adm, ch, ch.solicitante_nome, primeira[0]?.texto ?? "", resumo));
+  const emails: Email[] = (await avisadosDeChamadoNovo(ch.cliente_id)).map((p) => modelos.novoChamado(p, ch, ch.solicitante_nome, primeira[0]?.texto ?? "", resumo));
   avisar(emails);
 }
 

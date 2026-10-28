@@ -19,6 +19,7 @@
     </form>
   </details>
   <p class="sutil">CNPJ: <%= formatarCnpj(cliente.cnpj) || "—" %><%= cliente.observacoes ? " · " + cliente.observacoes : "" %></p>
+  <% if (alocados.length) { %><p>Analista(s) alocado(s) neste cliente: <strong><%= alocados.map((a) => a.nome).join(", ") %></strong></p><% } %>
 </section>
 
 <section class="cartao" id="contrato">

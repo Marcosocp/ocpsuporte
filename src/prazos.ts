@@ -9,6 +9,7 @@ import { registrar } from "./auditoria.js";
 import { avisar, type Email } from "./email.js";
 import * as modelos from "./modelos-email.js";
 import { minutosUteis, somarMinutosUteis, duracaoUtil, type Feriados } from "./expediente.js";
+import { dedicados } from "./escopo.js";
 
 const PAUSA = ["aguardando_cliente", "resolvido"];
 const ENCERRADA = ["fechado", "cancelado"];
@@ -150,7 +151,9 @@ export async function verificarPrazos(agora = new Date()): Promise<number> {
         emails = destinos.map((p) => modelos.prazoAlerta(p, ch, tipo, true, prazo));
         coluna = colEstouro;
       } else if (agora < prazo && !ch[colAviso] && minutosUteis(agora, prazo, feriados) <= limiarAviso(new Date(ch.sla_inicio_em), prazo)) {
-        emails = (responsavel.length ? responsavel : admins).map((p) => modelos.prazoAlerta(p, ch, tipo, false, prazo));
+        // Sem responsável: administradores e quem está alocado no cliente.
+        const semDono = [...admins, ...(await dedicados(ch.cliente_id))].filter((p, i, l) => l.findIndex((q) => q.email === p.email) === i);
+        emails = (responsavel.length ? responsavel : semDono).map((p) => modelos.prazoAlerta(p, ch, tipo, false, prazo));
         coluna = colAviso;
       }
       if (!coluna) return;
