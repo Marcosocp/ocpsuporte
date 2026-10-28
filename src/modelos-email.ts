@@ -105,6 +105,15 @@ export function respostaParaCliente(p: Pessoa, c: Chamado, autor: string, texto:
   });
 }
 
+export function perguntasTriagem(p: Pessoa, c: Chamado, texto: string): Email {
+  return montar(p.email, `Precisamos de alguns detalhes — chamado ${numero(c.id)}`, {
+    titulo: "Alguns detalhes para agilizar o atendimento",
+    paragrafos: [`Sobre o chamado <strong>${numero(c.id)} “${esc(c.titulo)}”</strong>:`],
+    citacao: texto,
+    botao: { texto: "Responder no portal", url: linkPortal(c) },
+  });
+}
+
 export function chamadoResolvido(p: Pessoa, c: Chamado, texto: string): Email {
   return montar(p.email, `Resolvido: chamado ${numero(c.id)}`, {
     titulo: "Seu chamado foi resolvido",
@@ -116,10 +125,18 @@ export function chamadoResolvido(p: Pessoa, c: Chamado, texto: string): Email {
 
 // --- Chamados: para a equipe da OCP ---
 
-export function novoChamado(p: Pessoa, c: Chamado, solicitante: string, texto: string): Email {
+export interface ResumoTriagem { resumo: string; prioridade: string; area: string | null; responsavel: string | null; alertas: string[] }
+
+export function novoChamado(p: Pessoa, c: Chamado, solicitante: string, texto: string, triagem: ResumoTriagem | null = null): Email {
+  const paragrafos = [`<strong>${esc(solicitante)}</strong> (${esc(c.cliente)}) abriu <strong>${numero(c.id)} “${esc(c.titulo)}”</strong>.`];
+  if (triagem) {
+    paragrafos.push(`<strong>Resumo da triagem:</strong> ${esc(triagem.resumo)}`);
+    paragrafos.push(`<strong>Sugestão:</strong> prioridade ${esc(triagem.prioridade)} · área ${esc(triagem.area ?? "—")} · responsável ${esc(triagem.responsavel ?? "—")}`);
+    if (triagem.alertas.length) paragrafos.push(`<strong>⚠️ Alertas:</strong> ${triagem.alertas.map(esc).join(" · ")}`);
+  }
   return montar(p.email, `Novo chamado ${numero(c.id)} — ${c.cliente}: ${c.titulo}`, {
     titulo: "Novo chamado aguardando distribuição",
-    paragrafos: [`<strong>${esc(solicitante)}</strong> (${esc(c.cliente)}) abriu <strong>${numero(c.id)} “${esc(c.titulo)}”</strong>:`],
+    paragrafos: [...paragrafos, "Descrição do cliente:"],
     citacao: texto,
     botao: { texto: "Abrir no painel", url: linkPainel(c) },
   });

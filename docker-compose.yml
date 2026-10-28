@@ -33,7 +33,8 @@ services:
       - ./data/anexos:/app/data/anexos
     ports:
       - "127.0.0.1:3200:3200"
-    networks: [interna, publica]
+    # ocp-ia: só o vLLM do Hermes (triagem). Criada fora do compose: docker network create ocp-ia
+    networks: [interna, publica, ocp-ia]
     depends_on:
       mysql:
         condition: service_healthy
@@ -51,6 +52,8 @@ services:
 
 networks:
   interna: {}
+  ocp-ia:
+    external: true
   # Só o túnel e o app. O app trata como "internet" tudo que chega por aqui (src/publico.ts).
   publica:
     ipam:

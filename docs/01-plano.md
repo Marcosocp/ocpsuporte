@@ -1,6 +1,6 @@
 # OCP Suporte — Plano do projeto
 
-Data: 2026-10-27 · Status: **Fase 1 concluída (em uso no ZGX pelo Tailscale); aguardando aprovação para a Fase 2**
+Data: 2026-10-28 · Status: **Fases 1 e 2 concluídas (em uso no ZGX pelo Tailscale); aguardando aprovação para a Fase 3**
 
 ## 1. Objetivo
 

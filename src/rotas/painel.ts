@@ -8,6 +8,7 @@ import {
   distribuir, filtroVisibilidade, historico, reabrir, responderComoEquipe,
 } from "../chamados.js";
 import { arquivosRecebidos, escolha, id, receberUpload, texto } from "../formulario.js";
+import { buscarTriagem, concluirAgora, enfileirar } from "../triagem.js";
 
 export const rotasPainel = Router();
 rotasPainel.use(exigirEquipe);
@@ -45,9 +46,13 @@ rotasPainel.get("/", async (req, res) => {
 
   const [chamados] = await pool.query<any[]>(
     `SELECT c.id, c.titulo, c.status, c.tipo, c.prioridade, c.criado_em, c.atualizado_em,
-            cl.nome AS cliente, s.nome AS solicitante, a.nome AS area, r.nome AS responsavel
+            cl.nome AS cliente, s.nome AS solicitante, a.nome AS area, r.nome AS responsavel,
+            t.estado AS triagem, JSON_UNQUOTE(JSON_EXTRACT(t.ficha, '$.resumo')) AS resumo,
+            IF(t.sugestao_aplicada_em IS NULL AND t.estado = 'concluida', t.sugestao_prioridade, NULL) AS sugestao_prioridade,
+            IF(t.sugestao_aplicada_em IS NULL AND t.estado = 'concluida', su.nome, NULL) AS sugestao_responsavel
      FROM chamados c JOIN clientes cl ON cl.id = c.cliente_id JOIN usuarios s ON s.id = c.solicitante_id
      LEFT JOIN areas a ON a.id = c.area_id LEFT JOIN usuarios r ON r.id = c.responsavel_id
+     LEFT JOIN triagens t ON t.chamado_id = c.id LEFT JOIN usuarios su ON su.id = t.sugestao_responsavel_id
      WHERE ${visivel.sql} AND ${FILAS[fila].sql} ${clienteId ? "AND c.cliente_id = ?" : ""}
      ORDER BY ${fila === "encerrados" ? "c.atualizado_em DESC" : `${ORDEM_PRIORIDADE}, c.criado_em`} LIMIT 300`,
     [...visivel.params, ...valores(fila), ...(clienteId ? [clienteId] : [])],
@@ -135,8 +140,17 @@ rotasPainel.get("/chamados/:id", async (req, res) => {
      ORDER BY c.id DESC LIMIT 5`,
     [ch.solicitante_id, ch.id, ...f.params],
   );
+  // Ficha da triagem: os chamados parecidos aparecem só se quem olha também pode vê-los.
+  const triagem = await buscarTriagem(ch.id);
+  let parecidos: any[] = [];
+  if (triagem?.ficha?.parecidos?.length) {
+    [parecidos] = await pool.query<any[]>(
+      `SELECT c.id, c.titulo, cl.nome AS cliente FROM chamados c JOIN clientes cl ON cl.id = c.cliente_id WHERE c.id IN (?) AND ${f.sql}`,
+      [triagem.ficha.parecidos, ...f.params],
+    );
+  }
   res.render("painel/chamado", {
-    ch, mensagens: await conversa(ch.id, true), eventos: await historico(ch.id), areas, equipe, outros,
+    ch, mensagens: await conversa(ch.id, true), eventos: await historico(ch.id), areas, equipe, outros, triagem, parecidos,
   });
 });
 
@@ -168,6 +182,30 @@ rotasPainel.post("/chamados/:id/distribuir", exigirAdmin, (req, res) => acao(req
   prioridade: String(req.body.prioridade ?? ""),
   tipo: String(req.body.tipo ?? ""),
 }), "Distribuição salva."));
+
+// Aceitar a sugestão da triagem = distribuir com os valores sugeridos (sugestão vazia mantém o atual).
+rotasPainel.post("/chamados/:id/aplicar-sugestao", exigirAdmin, (req, res) => acao(req, res, async (ch) => {
+  const t = await buscarTriagem(ch.id);
+  if (!t?.ficha || t.estado !== "concluida") throw new RegraChamado("Não há sugestão da triagem para este chamado.");
+  await distribuir(req, ch, {
+    areaId: t.sugestao_area_id ?? ch.area_id,
+    responsavelId: t.sugestao_responsavel_id ?? ch.responsavel_id,
+    prioridade: t.sugestao_prioridade ?? ch.prioridade,
+    tipo: t.sugestao_tipo ?? ch.tipo,
+  });
+  await pool.query("UPDATE triagens SET sugestao_aplicada_em = UTC_TIMESTAMP() WHERE chamado_id = ?", [ch.id]);
+}, "Sugestão aplicada."));
+
+// Encerra as perguntas ao cliente e gera a ficha com o que já há.
+rotasPainel.post("/chamados/:id/triagem/concluir", exigirAdmin, (req, res) => acao(req, res, async (ch) => {
+  if (ch.status !== "triagem" || !(await concluirAgora(ch.id))) throw new RegraChamado("O chamado não está em triagem.");
+}, "Triagem encerrada: a ficha será gerada com o que o cliente já informou."));
+
+// Gera a ficha de novo (ex.: depois de mais conversa), sem falar com o cliente nem mudar o chamado.
+rotasPainel.post("/chamados/:id/triagem/refazer", exigirAdmin, (req, res) => acao(req, res, async (ch) => {
+  if (ENCERRADAS.includes(ch.status)) throw new RegraChamado("Chamado encerrado.");
+  await enfileirar(ch.id, true);
+}, "Ficha na fila do assistente. Recarregue em alguns segundos."));
 
 rotasPainel.post("/chamados/:id/assumir", (req, res) => acao(req, res, (ch) => assumir(req, ch), "Chamado assumido."));
 

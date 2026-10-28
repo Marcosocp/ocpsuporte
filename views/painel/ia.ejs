@@ -1,0 +1,58 @@
+<%- include("../partes/topo", { titulo: "Assistente de triagem" }) %>
+<h1>🤖 Assistente de triagem</h1>
+<section class="cartao">
+  <p>
+    Modelo local: <code><%= modelo %></code> —
+    <% if (disponivel) { %><strong style="color:#067647">disponível</strong><% } else { %><strong class="perigo">fora do ar</strong> (os chamados seguem direto para a fila, sem ficha)<% } %>
+  </p>
+  <p class="sutil">
+    O assistente lê o chamado, pergunta ao cliente só o que falta (até 2 rodadas) e monta a ficha técnica com sugestão de
+    área, responsável e prioridade. <strong>Ele não altera nada sozinho:</strong> a distribuição é sempre de uma pessoa.
+    Se o cliente não responder em 24 horas, o chamado segue para a equipe com o que já tem.
+  </p>
+  <form method="post" action="/painel/ia/ativa" class="botoes">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="ativa" value="<%= ativa ? '0' : '1' %>">
+    <span>Triagem automática: <strong><%= ativa ? "ligada" : "desligada" %></strong></span>
+    <button class="secundario"><%= ativa ? "Desligar" : "Ligar" %></button>
+  </form>
+  <p class="sutil">
+    Até agora: <%= contagem.concluida ?? 0 %> concluídas · <%= contagem.aguardando_cliente ?? 0 %> aguardando cliente ·
+    <%= (contagem.pendente ?? 0) + (contagem.processando ?? 0) %> na fila · <%= contagem.falhou ?? 0 %> falharam · <%= contagem.cancelada ?? 0 %> interrompidas
+  </p>
+</section>
+
+<section class="cartao" id="roteiros">
+  <h2>Roteiros por tipo de chamado</h2>
+  <p class="dica">O que o assistente deve levantar em cada tipo. Escreva como se explicasse a um analista novo.</p>
+  <% for (const r of roteiros) { %>
+  <form method="post" action="/painel/ia/roteiros/<%= r.tipo %>">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label><%= TIPOS[r.tipo] %>
+      <textarea name="instrucoes" rows="4" maxlength="4000" required><%= r.instrucoes %></textarea>
+    </label>
+    <p class="dica">Atualizado em <%= dataHora(r.atualizado_em) %><%= r.autor ? " por " + r.autor : "" %> · <button class="link">salvar</button></p>
+  </form>
+  <% } %>
+</section>
+
+<section class="cartao">
+  <h2>Últimas triagens</h2>
+  <table>
+    <thead><tr><th>Chamado</th><th>Cliente</th><th>Situação</th><th>Rodadas</th><th>Tempo</th><th>Quando</th></tr></thead>
+    <tbody>
+    <% for (const t of recentes) { %>
+      <tr>
+        <td class="quebra"><a href="/painel/chamados/<%= t.chamado_id %>"><%= numero(t.chamado_id) %></a> <%= t.titulo %></td>
+        <td><%= t.cliente %></td>
+        <td><%= t.estado.replace("_", " ") %><% if (t.erro && t.estado !== "concluida") { %><br><span class="perigo quebra"><%= t.erro %></span><% } %></td>
+        <td><%= t.rodada %></td>
+        <td><%= t.duracao_ms ? (t.duracao_ms / 1000).toFixed(1).replace(".", ",") + " s" : "—" %></td>
+        <td><%= dataHora(t.atualizado_em) %></td>
+      </tr>
+    <% } %>
+    <% if (!recentes.length) { %><tr><td colspan="6" class="sutil">Nenhuma triagem ainda.</td></tr><% } %>
+    </tbody>
+  </table>
+</section>
+<%- include("../partes/rodape") %>

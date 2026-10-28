@@ -8,6 +8,7 @@
 </div>
 <div class="chamado">
   <section>
+    <%- include("../partes/ficha-triagem", { ch, triagem, parecidos }) %>
     <%- include("../partes/mensagens", { mensagens, rotaAnexos: "/painel/anexos" }) %>
 
     <form method="post" action="/painel/chamados/<%= ch.id %>/responder" enctype="multipart/form-data" class="cartao" id="responder">

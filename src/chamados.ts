@@ -8,6 +8,7 @@ import { registrar } from "./auditoria.js";
 import { avisar, type Email } from "./email.js";
 import { salvarAnexos } from "./anexos.js";
 import * as modelos from "./modelos-email.js";
+import { clienteRespondeu, enfileirar, interromperTriagem, triagemAtiva } from "./triagem.js";
 
 export const TIPOS = { incidente: "Erro / problema", duvida: "Dúvida", solicitacao: "Solicitação", melhoria: "Melhoria" } as const;
 export const IMPACTOS = { pessoa: "Só eu", setor: "Meu setor", empresa: "A empresa toda / operação parada" } as const;
@@ -64,7 +65,8 @@ export async function buscarChamado(u: UsuarioSessao, id: number): Promise<any |
 export async function conversa(chamadoId: number, incluirInternas: boolean): Promise<any[]> {
   const filtro = incluirInternas ? "" : "AND m.visibilidade = 'publica'";
   const [mensagens] = await pool.query<any[]>(
-    `SELECT m.*, u.nome AS autor, u.papel AS autor_papel FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
+    `SELECT m.*, CASE m.origem WHEN 'ia' THEN 'Assistente virtual OCP' WHEN 'sistema' THEN 'Sistema' ELSE u.nome END AS autor,
+       u.papel AS autor_papel FROM mensagens m LEFT JOIN usuarios u ON u.id = m.autor_id
      WHERE m.chamado_id = ? ${filtro} ORDER BY m.criado_em, m.id`,
     [chamadoId],
   );
@@ -104,7 +106,8 @@ async function inserirMensagem(
   arquivos: Express.Multer.File[] = [],
 ): Promise<number> {
   const [r] = await c.query<any>(
-    "INSERT INTO mensagens (chamado_id, autor_id, visibilidade, texto) VALUES (?, ?, ?, ?)", [chamadoId, autorId, visibilidade, texto],
+    "INSERT INTO mensagens (chamado_id, autor_id, origem, visibilidade, texto) VALUES (?, ?, ?, ?, ?)",
+    [chamadoId, autorId, autorId ? "pessoa" : "sistema", visibilidade, texto],
   );
   if (autorId) await salvarAnexos(c, arquivos, chamadoId, r.insertId, autorId);
   return r.insertId;
@@ -134,12 +137,15 @@ export interface NovoChamado {
 
 export async function abrirChamado(req: Request, dados: NovoChamado, arquivos: Express.Multer.File[]): Promise<number> {
   const autor = req.session.usuario!;
+  // Com a triagem ligada, o chamado passa primeiro pelo assistente; a equipe é avisada quando a ficha fica pronta.
+  const comTriagem = await triagemAtiva();
   const id = await emTransacao(async (c) => {
     const [r] = await c.query<any>(
-      `INSERT INTO chamados (cliente_id, solicitante_id, aberto_por_id, departamento_id, sistema_id, titulo, tipo, impacto, prioridade, canal)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO chamados (cliente_id, solicitante_id, aberto_por_id, departamento_id, sistema_id, titulo, tipo, impacto, prioridade,
+         canal, status, texto_busca)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [dados.clienteId, dados.solicitanteId, autor.id, dados.departamentoId, dados.sistemaId, dados.titulo, dados.tipo,
-        dados.impacto, prioridadeInicial(dados.impacto), dados.canal],
+        dados.impacto, prioridadeInicial(dados.impacto), dados.canal, comTriagem ? "triagem" : "novo", dados.descricao],
     );
     // A descrição é a primeira mensagem pública (autor: quem registrou); os anexos ficam nela.
     await inserirMensagem(c, r.insertId, autor.id, "publica", dados.descricao, arquivos);
@@ -149,8 +155,13 @@ export async function abrirChamado(req: Request, dados: NovoChamado, arquivos: E
 
   const ch = await buscarChamado({ ...autor, papel: "admin" }, id);
   const emails: Email[] = [modelos.chamadoAberto({ nome: ch.solicitante_nome, email: ch.solicitante_email }, ch)];
-  for (const adm of await administradores()) {
-    if (adm.email !== autor.email) emails.push(modelos.novoChamado(adm, ch, ch.solicitante_nome, dados.descricao));
+  if (comTriagem) {
+    // Aberto pela equipe em nome do cliente: só gera a ficha, sem perguntas.
+    await enfileirar(id, dados.canal === "painel");
+  } else {
+    for (const adm of await administradores()) {
+      if (adm.email !== autor.email) emails.push(modelos.novoChamado(adm, ch, ch.solicitante_nome, dados.descricao));
+    }
   }
   avisar(emails);
   return id;
@@ -172,6 +183,11 @@ export async function responderComoCliente(req: Request, ch: any, texto: string,
     );
   });
   await registrar(req, reaberto ? "chamado_reaberto" : "resposta_cliente", { chamado_id: ch.id, status: novoStatus });
+  if (ch.status === "triagem") {
+    // Respondeu às perguntas do assistente: a equipe ainda não está no chamado; volta para a fila da triagem.
+    await clienteRespondeu(ch.id);
+    return;
+  }
   avisar((await equipeDoChamado(ch)).map((p) => modelos.respostaParaEquipe(p, ch, u.nome, texto, reaberto)));
 }
 
@@ -206,6 +222,7 @@ export async function responderComoEquipe(
       [novoStatus, u.id, !interna, resolvidoAgora, manterResolvidoEm, ch.id],
     );
   });
+  if (novoStatus !== "triagem") await interromperTriagem(ch.id);
   await registrar(req, interna ? "nota_interna" : "resposta_equipe", {
     chamado_id: ch.id, status: novoStatus !== ch.status ? novoStatus : undefined, assumiu: assumir || undefined,
   });
@@ -250,6 +267,7 @@ export async function distribuir(
     tipo: ch.tipo !== dados.tipo ? dados.tipo : undefined,
     status: status !== ch.status ? status : undefined,
   };
+  if (status !== "triagem") await interromperTriagem(ch.id);
   await registrar(req, "chamado_distribuido", { chamado_id: ch.id, ...alteracoes });
 
   if (dados.responsavelId && mudou(ch.responsavel_id, dados.responsavelId) && dados.responsavelId !== u.id) {
@@ -267,6 +285,7 @@ export async function assumir(req: Request, ch: any): Promise<void> {
     "UPDATE chamados SET responsavel_id = ?, status = IF(status IN ('novo', 'triagem'), 'atribuido', status), atualizado_em = UTC_TIMESTAMP() WHERE id = ? AND responsavel_id IS NULL",
     [u.id, ch.id],
   );
+  await interromperTriagem(ch.id);
   await registrar(req, "chamado_assumido", { chamado_id: ch.id });
 }
 
@@ -288,6 +307,7 @@ export async function cancelar(req: Request, ch: any, motivo: string): Promise<v
     await inserirMensagem(c, ch.id, u.id, "publica", `Chamado cancelado${motivo ? `: ${motivo}` : "."}`);
     await c.query("UPDATE chamados SET status = 'cancelado', fechado_em = UTC_TIMESTAMP(), atualizado_em = UTC_TIMESTAMP() WHERE id = ?", [ch.id]);
   });
+  await interromperTriagem(ch.id);
   await registrar(req, "chamado_cancelado", { chamado_id: ch.id, motivo });
   if (pelaEquipe) {
     avisar([modelos.respostaParaCliente({ nome: ch.solicitante_nome, email: ch.solicitante_email }, ch, u.nome, `Chamado cancelado${motivo ? `: ${motivo}` : "."}`, false)]);

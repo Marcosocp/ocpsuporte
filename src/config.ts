@@ -42,6 +42,15 @@ export const config = {
   },
   // Chamado resolvido sem resposta do cliente fecha sozinho depois de N dias.
   diasFecharResolvido: Number(process.env.DIAS_FECHAR_RESOLVIDO ?? 5),
+  // Triagem com o modelo local (vLLM do Hermes, pela rede Docker ocp-ia). Vazio desliga.
+  ia: {
+    url: process.env.IA_URL ?? "http://vllm:8000/v1",
+    modelo: process.env.IA_MODELO ?? "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    timeoutMs: Number(process.env.IA_TIMEOUT_MS ?? 120_000),
+    maxRodadas: Number(process.env.IA_MAX_RODADAS ?? 2),          // rodadas de perguntas ao cliente
+    horasSemResposta: Number(process.env.IA_HORAS_SEM_RESPOSTA ?? 24), // depois disso, segue para a equipe
+    esperaTentativaS: Number(process.env.IA_ESPERA_TENTATIVA_S ?? 60), // modelo fora: espera 1×, 2× isso entre tentativas
+  },
   db: {
     host: obrigatoria("DB_HOST"),
     port: Number(process.env.DB_PORT ?? 3306),

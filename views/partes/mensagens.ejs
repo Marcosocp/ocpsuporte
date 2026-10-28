@@ -1,10 +1,10 @@
 <%# Conversa do chamado. Parâmetros: mensagens, rotaAnexos ("/portal/anexos" ou "/painel/anexos"). %>
 <% for (const m of mensagens) {
      const daEquipe = m.autor_papel === "admin" || m.autor_papel === "analista"; %>
-<article class="mensagem <%= !m.autor_id ? 'sistema' : m.visibilidade === 'interna' ? 'interna' : daEquipe ? 'da-equipe' : '' %>" id="m<%= m.id %>">
+<article class="mensagem <%= m.origem === 'ia' ? 'ia' : !m.autor_id ? 'sistema' : m.visibilidade === 'interna' ? 'interna' : daEquipe ? 'da-equipe' : '' %>" id="m<%= m.id %>">
   <div class="mensagem-topo">
     <span>
-      <strong><%= m.autor ?? "Sistema" %></strong><% if (daEquipe) { %> · Suporte OCP<% } %>
+      <strong><%= m.origem === "ia" ? "🤖 " : "" %><%= m.autor ?? "Sistema" %></strong><% if (daEquipe) { %> · Suporte OCP<% } %>
       <% if (m.visibilidade === "interna") { %> <span class="etiqueta">nota interna — o cliente não vê</span><% } %>
     </span>
     <time><%= dataHora(m.criado_em) %></time>

@@ -124,3 +124,16 @@ details.editar[open] { padding: .75rem; margin: .5rem 0; border: 1px solid var(-
 .largo { width: 100%; padding: .7rem; font-size: 1rem; margin-bottom: .75rem; }
 .botoes > input, .botoes > select { width: auto; flex: 1 1 220px; margin-top: 0; }
 .botoes > label { flex: 1 1 260px; margin-bottom: 0; }
+
+/* --- Fase 2: triagem --- */
+.mensagem.ia { border-left: 4px solid #7a5af8; background: color-mix(in srgb, #7a5af8 6%, var(--cartao)); }
+.ficha-ia { border-left: 4px solid #7a5af8; }
+.ficha-ia h3 { font-size: .9rem; margin: .9rem 0 .35rem; color: var(--sutil); text-transform: uppercase; letter-spacing: .03em; }
+.ficha-ia ul, .ficha-ia ol { margin: 0; padding-left: 1.2rem; }
+.ficha-ia li { margin-bottom: .2rem; }
+.alertas { background: var(--erro-fundo); color: var(--erro); border-radius: 6px; padding: .5rem .8rem; margin-bottom: .75rem; }
+.alertas ul { margin: 0; padding-left: 1.1rem; }
+.sugestao { background: var(--aviso-fundo); border: 1px solid var(--aviso-borda); border-radius: 8px; padding: .6rem .8rem; margin-top: .75rem; }
+.resumo-fila { display: block; font-size: .82rem; color: var(--sutil); max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.etiqueta-ia { font-size: .72rem; font-weight: 600; padding: .05rem .4rem; border-radius: 4px; background: #ebe9fe; color: #5925dc; }
+@media (prefers-color-scheme: dark) { .etiqueta-ia { background: #2e2563; color: #c3b5fd; } }

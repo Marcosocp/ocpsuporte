@@ -1,0 +1,73 @@
+<%# Ficha da triagem automática (só para a equipe). Parâmetros: ch, triagem, parecidos. %>
+<% if (triagem) { const f = triagem.ficha; %>
+<section class="cartao ficha-ia" id="ficha">
+  <div class="cabecalho">
+    <h2>🤖 Ficha da triagem <span class="etiqueta-ia">sugestão — confira antes de usar</span></h2>
+    <span class="sutil">
+      <% if (triagem.estado === "pendente" || triagem.estado === "processando") { %>analisando…
+      <% } else if (triagem.estado === "aguardando_cliente") { %>aguardando o cliente responder (rodada <%= triagem.rodada %>)
+      <% } else if (triagem.estado === "falhou") { %>assistente indisponível
+      <% } else if (triagem.estado === "cancelada") { %>interrompida (a equipe assumiu)
+      <% } else { %>concluída <%= dataHora(triagem.concluida_em) %><% } %>
+      <% if (triagem.duracao_ms) { %> · <%= (triagem.duracao_ms / 1000).toFixed(1).replace(".", ",") %> s<% } %>
+    </span>
+  </div>
+
+  <% if (triagem.estado === "falhou") { %>
+    <p class="erro">A triagem não conseguiu rodar (<%= triagem.erro %>). O chamado seguiu para a fila sem ficha.</p>
+  <% } %>
+
+  <% if (f) { %>
+    <% if (f.alertas.length) { %><div class="alertas"><strong>⚠️ Alertas</strong><ul><% for (const a of f.alertas) { %><li><%= a %></li><% } %></ul></div><% } %>
+    <p><%= f.resumo %></p>
+
+    <% if (f.informacoes.length) { %>
+      <h3>Informações levantadas</h3>
+      <dl class="ficha"><% for (const i of f.informacoes) { %><dt><%= i.item %></dt><dd><%= i.valor %></dd><% } %></dl>
+    <% } %>
+    <% if (f.passos_reproducao.length) { %><h3>Passos para reproduzir</h3><ol><% for (const p of f.passos_reproducao) { %><li><%= p %></li><% } %></ol><% } %>
+    <% if (f.hipoteses.length) { %><h3>Hipóteses</h3><ul><% for (const h of f.hipoteses) { %><li><%= h %></li><% } %></ul><% } %>
+    <% if (f.proximos_passos.length) { %><h3>Próximos passos sugeridos</h3><ul><% for (const p of f.proximos_passos) { %><li><%= p %></li><% } %></ul><% } %>
+    <% if (f.faltando.length) { %><h3>Ainda não se sabe</h3><ul><% for (const p of f.faltando) { %><li><%= p %></li><% } %></ul><% } %>
+    <% if (parecidos.length) { %>
+      <h3>Chamados parecidos já resolvidos</h3>
+      <ul><% for (const p of parecidos) { %><li><a href="/painel/chamados/<%= p.id %>"><%= numero(p.id) %></a> <%= p.titulo %> <span class="sutil">(<%= p.cliente %>)</span></li><% } %></ul>
+    <% } %>
+
+    <% if (triagem.estado === "concluida") { %>
+    <div class="sugestao">
+      <strong>Sugestão:</strong>
+      <%= TIPOS[triagem.sugestao_tipo] ?? "—" %> ·
+      prioridade <span class="pr pr-<%= triagem.sugestao_prioridade %>"><%= PRIORIDADES[triagem.sugestao_prioridade] ?? "—" %></span> ·
+      área <strong><%= triagem.sugestao_area ?? "—" %></strong> ·
+      responsável <strong><%= triagem.sugestao_responsavel ?? "—" %></strong>
+      <p class="dica"><%= f.justificativa %></p>
+      <% if (usuario.papel === "admin" && !["fechado", "cancelado"].includes(ch.status)) { %>
+        <% if (triagem.sugestao_aplicada_em) { %>
+          <p class="sutil">Sugestão aplicada em <%= dataHora(triagem.sugestao_aplicada_em) %>.</p>
+        <% } else { %>
+        <form method="post" action="/painel/chamados/<%= ch.id %>/aplicar-sugestao" class="inline">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <button class="primario">Aplicar sugestão</button>
+        </form>
+        <% } %>
+      <% } %>
+    </div>
+    <% } %>
+  <% } %>
+
+  <% if (usuario.papel === "admin") { %>
+  <div class="botoes" style="margin-top:.75rem">
+    <% if (ch.status === "triagem" && ["aguardando_cliente", "pendente"].includes(triagem.estado)) { %>
+    <form method="post" action="/painel/chamados/<%= ch.id %>/triagem/concluir" class="inline">
+      <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link">Parar de perguntar e gerar a ficha</button>
+    </form>
+    <% } else if (!["fechado", "cancelado"].includes(ch.status) && !["pendente", "processando"].includes(triagem.estado)) { %>
+    <form method="post" action="/painel/chamados/<%= ch.id %>/triagem/refazer" class="inline">
+      <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link">Gerar a ficha de novo (com a conversa atual)</button>
+    </form>
+    <% } %>
+  </div>
+  <% } %>
+</section>
+<% } %>

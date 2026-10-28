@@ -25,11 +25,14 @@
     <% for (const c of chamados) { %>
       <tr>
         <td><a href="/painel/chamados/<%= c.id %>"><%= numero(c.id) %></a></td>
-        <td class="quebra"><a href="/painel/chamados/<%= c.id %>"><%= c.titulo %></a><br><span class="sutil"><%= TIPOS[c.tipo] %> · <%= c.solicitante %></span></td>
+        <td class="quebra"><a href="/painel/chamados/<%= c.id %>"><%= c.titulo %></a><br><span class="sutil"><%= TIPOS[c.tipo] %> · <%= c.solicitante %></span>
+          <% if (c.resumo) { %><span class="resumo-fila" title="<%= c.resumo %>">🤖 <%= c.resumo %></span><% } %></td>
         <td><%= c.cliente %></td>
-        <td><span class="pr pr-<%= c.prioridade %>"><%= PRIORIDADES[c.prioridade] %></span></td>
+        <td><span class="pr pr-<%= c.prioridade %>"><%= PRIORIDADES[c.prioridade] %></span>
+          <% if (c.sugestao_prioridade && c.sugestao_prioridade !== c.prioridade) { %><br><span class="sutil">🤖 <%= PRIORIDADES[c.sugestao_prioridade] %></span><% } %></td>
         <td><%- include("../partes/situacao", { status: c.status }) %></td>
-        <td><%= c.responsavel ?? "—" %><% if (c.area) { %><br><span class="sutil"><%= c.area %></span><% } %></td>
+        <td><%= c.responsavel ?? "—" %><% if (c.area) { %><br><span class="sutil"><%= c.area %></span><% } %>
+          <% if (!c.responsavel && c.sugestao_responsavel) { %><br><span class="sutil">🤖 sugestão: <%= c.sugestao_responsavel %></span><% } %></td>
         <td><%= dataHora(c.criado_em) %></td>
       </tr>
     <% } %>

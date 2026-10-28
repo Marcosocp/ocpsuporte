@@ -44,11 +44,20 @@ services:
       PASTA_EMAILS: /teste/emails
       # Simula o nome público: requisições com Host suporte.teste chegam como "da internet"
       HOST_PUBLICO: suporte.teste
+      # Modelo real (só leitura); IA_URL_TESTE=http://127.0.0.1:9/v1 simula o modelo fora do ar
+      IA_URL: ${IA_URL_TESTE:-http://vllm:8000/v1}
+      IA_HORAS_SEM_RESPOSTA: "24"
+      IA_ESPERA_TENTATIVA_S: "2"
     volumes:
       - ./:/app:ro
       - ${OCPSUPORTE_TESTE_DIR}:/teste
     ports:
       - "127.0.0.1:3210:3210"
+    networks: [default, ocp-ia]
     depends_on:
       mysql-teste:
         condition: service_healthy
+
+networks:
+  ocp-ia:
+    external: true

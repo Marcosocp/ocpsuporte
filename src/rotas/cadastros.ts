@@ -10,6 +10,8 @@ import {
 } from "../cadastro.js";
 import { escolha, id, ids, texto } from "../formulario.js";
 import { cnpjValido, emailValido, limparDigitos, normalizarCelular } from "../validacao.js";
+import { config as configApp } from "../config.js";
+import { modeloDisponivel } from "../ia.js";
 
 export const rotasCadastros = Router();
 rotasCadastros.use(exigirEquipe, exigirAdmin);
@@ -280,3 +282,41 @@ rotasCadastros.post("/equipe/areas/:id", (req, res) => salvar(req, res, "/painel
   });
   await registrar(req, "area_alterada", { area_id: id(req.params.id), nome, ativo: req.body.ativo === "1" });
 }, "Área atualizada."));
+
+// --- Assistente de triagem (IA local) ---
+
+rotasCadastros.get("/ia", async (_req, res) => {
+  const [config] = await pool.query<any[]>("SELECT valor FROM configuracoes WHERE chave = 'triagem_ativa'");
+  const [roteiros] = await pool.query<any[]>(
+    `SELECT r.*, u.nome AS autor FROM roteiros_triagem r LEFT JOIN usuarios u ON u.id = r.atualizado_por
+     ORDER BY FIELD(r.tipo, 'incidente', 'duvida', 'solicitacao', 'melhoria')`,
+  );
+  const [recentes] = await pool.query<any[]>(
+    `SELECT t.chamado_id, t.estado, t.rodada, t.duracao_ms, t.erro, t.atualizado_em, c.titulo, cl.nome AS cliente
+     FROM triagens t JOIN chamados c ON c.id = t.chamado_id JOIN clientes cl ON cl.id = c.cliente_id
+     ORDER BY t.atualizado_em DESC LIMIT 20`,
+  );
+  const [contagem] = await pool.query<any[]>("SELECT estado, COUNT(*) AS n FROM triagens GROUP BY estado");
+  res.render("painel/ia", {
+    ativa: config[0]?.valor === "1", disponivel: await modeloDisponivel(), modelo: configApp.ia.modelo,
+    roteiros, recentes, contagem: Object.fromEntries(contagem.map((c) => [c.estado, c.n])),
+  });
+});
+
+rotasCadastros.post("/ia/ativa", async (req, res) => {
+  const ativa = req.body.ativa === "1";
+  await pool.query("UPDATE configuracoes SET valor = ? WHERE chave = 'triagem_ativa'", [ativa ? "1" : "0"]);
+  await registrar(req, "triagem_configurada", { ativa });
+  req.session.aviso = ativa ? "Triagem automática ligada." : "Triagem automática desligada: os chamados novos vão direto para a fila.";
+  res.redirect("/painel/ia");
+});
+
+rotasCadastros.post("/ia/roteiros/:tipo", (req, res) => salvar(req, res, "/painel/ia#roteiros", async () => {
+  const instrucoes = texto(req.body.instrucoes, 4000);
+  if (!instrucoes) throw new ErroCadastro("O roteiro não pode ficar vazio.");
+  const [r] = await pool.query<any>(
+    "UPDATE roteiros_triagem SET instrucoes = ?, atualizado_por = ? WHERE tipo = ?", [instrucoes, req.session.usuario!.id, req.params.tipo],
+  );
+  if (!r.affectedRows) throw new ErroCadastro("Tipo de chamado inválido.");
+  await registrar(req, "roteiro_alterado", { tipo: req.params.tipo });
+}, "Roteiro salvo. Vale a partir da próxima triagem."));

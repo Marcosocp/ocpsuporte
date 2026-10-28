@@ -12,6 +12,7 @@ import {
   reenviarConvite, usuariosDoCliente,
 } from "../cadastro.js";
 import { arquivosRecebidos, escolha, id, receberUpload, texto } from "../formulario.js";
+import { buscarTriagem, concluirAgora } from "../triagem.js";
 
 export const rotasPortal = Router();
 rotasPortal.use(exigirCliente);
@@ -102,7 +103,9 @@ async function chamadoOu404(req: Request, res: Response) {
 rotasPortal.get("/chamados/:id", async (req, res) => {
   const ch = await chamadoOu404(req, res);
   if (!ch) return;
-  res.render("portal/chamado", { ch, mensagens: await conversa(ch.id, false), erro: null });
+  // O cliente vê só a situação da triagem (analisando / perguntas), nunca a ficha técnica.
+  const triagem = ch.status === "triagem" ? await buscarTriagem(ch.id) : null;
+  res.render("portal/chamado", { ch, mensagens: await conversa(ch.id, false), triagemEstado: triagem?.estado ?? null, erro: null });
 });
 
 async function acao(req: Request, res: Response, fn: (ch: any) => Promise<void>, aviso: string) {
@@ -126,6 +129,10 @@ rotasPortal.post("/chamados/:id/responder", receberUpload, conferirCsrf, (req, r
   validarAnexos(arquivos);
   await responderComoCliente(req, ch, mensagem, arquivos);
 }, "Resposta enviada."));
+
+rotasPortal.post("/chamados/:id/seguir", (req, res) => acao(req, res, async (ch) => {
+  if (ch.status !== "triagem" || !(await concluirAgora(ch.id))) throw new RegraChamado("O chamado já foi encaminhado à equipe.");
+}, "Certo! Vamos encaminhar seu chamado à equipe com as informações que você já passou."));
 
 rotasPortal.post("/chamados/:id/confirmar", (req, res) => acao(req, res, (ch) => confirmarSolucao(req, ch), "Obrigado! Chamado encerrado."));
 
