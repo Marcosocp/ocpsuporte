@@ -81,6 +81,39 @@
   <%- include("../partes/usuarios-cliente", { usuarios, departamentos, rota: "/painel/clientes/" + cliente.id }) %>
 </section>
 
+<section class="cartao" id="link-cadastro">
+  <h2>Link de cadastro</h2>
+  <p class="dica">Envie este link ao cliente (e-mail, grupo de WhatsApp…). Quem abrir só consegue <strong>pedir</strong> acesso: a conta é criada quando você aprova.</p>
+  <% if (linkCadastro) { %>
+    <div class="copiar">
+      <input id="link-cadastro-url" value="<%= enderecoDoLink(linkCadastro.token) %>" readonly>
+      <button type="button" class="secundario" data-copiar="#link-cadastro-url">Copiar</button>
+    </div>
+    <p class="sutil">Gerado em <%= dataHora(linkCadastro.criado_em) %> · <%= linkCadastro.expira_em ? "vale até " + dataHora(linkCadastro.expira_em) : "sem prazo (vale até revogar)" %></p>
+    <form method="post" action="/painel/clientes/<%= cliente.id %>/link-cadastro/revogar" class="inline" data-confirmar="Revogar o link? Quem tiver o endereço não consegue mais pedir acesso.">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <button class="secundario">Revogar link</button>
+    </form>
+  <% } else { %>
+    <p class="sutil">Nenhum link ativo.</p>
+  <% } %>
+  <details class="editar">
+    <summary><%= linkCadastro ? "Gerar link novo (o atual deixa de valer)" : "+ Gerar link" %></summary>
+    <form method="post" action="/painel/clientes/<%= cliente.id %>/link-cadastro">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <label>Validade
+        <select name="validade"><% for (const [k, v] of Object.entries(validades)) { %><option value="<%= k %>" <%= k === "30" ? "selected" : "" %>><%= v %></option><% } %></select>
+      </label>
+      <button class="primario">Gerar link</button>
+    </form>
+  </details>
+  <h3>Pedidos aguardando aprovação<%= pedidos.length ? " (" + pedidos.length + ")" : "" %></h3>
+  <% for (const s of pedidos) { %>
+    <%- include("../partes/pedido-acesso", { s, departamentos, voltar: "cliente" }) %>
+  <% } %>
+  <% if (!pedidos.length) { %><p class="sutil">Nenhum.</p><% } %>
+</section>
+
 <section class="cartao" id="sistemas">
   <h2>Sistemas e ambientes</h2>
   <p class="dica">Como o cliente acessa cada sistema (ex.: Protheus pelo Workspace, portal em https://…). A IA de triagem usa isto para entender o chamado. <strong>Nunca registre senhas aqui.</strong></p>

@@ -190,3 +190,16 @@ export function alertaHoras(p: Pessoa, c: { cliente: string; mes: string; fatura
   });
 }
 
+
+// --- Pedidos de acesso (link de cadastro) ---
+
+export function pedidoDeAcesso(p: Pessoa, s: { nome: string; email: string; cargo: string | null; cliente: string }): Email {
+  return montar(p.email, `Pedido de acesso — ${s.cliente}: ${s.nome}`, {
+    titulo: "Novo pedido de acesso aguardando aprovação",
+    paragrafos: [
+      `<strong>${esc(s.nome)}</strong> (${esc(s.email)}${s.cargo ? ` · ${esc(s.cargo)}` : ""}) pediu acesso ao portal pelo link de cadastro de <strong>${esc(s.cliente)}</strong>.`,
+      "A conta só é criada se você aprovar.",
+    ],
+    botao: { texto: "Ver pedidos de acesso", url: `${config.painelUrl}/painel/pedidos` },
+  });
+}

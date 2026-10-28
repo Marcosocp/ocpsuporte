@@ -1,0 +1,31 @@
+<%# Um pedido de acesso pendente. Parâmetros: s (pedido), departamentos (do cliente), voltar ("cliente" ou "lista"). %>
+<div class="pedido">
+  <p><strong><%= s.nome %></strong> · <%= s.email %><%= s.celular ? " · " + formatarCelular(s.celular) : "" %>
+    <br><span class="sutil"><%= voltar === "lista" ? s.cliente + " · " : "" %><%= s.cargo ? s.cargo + " · " : "" %>pedido em <%= dataHora(s.criado_em) %><%= s.ip ? " · IP " + s.ip : "" %></span></p>
+  <form method="post" action="/painel/pedidos/<%= s.id %>/aprovar">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="voltar" value="<%= voltar %>">
+    <input type="hidden" name="cliente_id" value="<%= s.cliente_id %>">
+    <div class="linha">
+      <label>Perfil
+        <select name="papel"><option value="usuario">Usuário — vê os próprios chamados</option><option value="gestor">Gestor — vê todos os chamados da empresa</option></select>
+      </label>
+    </div>
+    <% const deps = departamentos.filter((d) => d.ativo || s.departamento_ids.includes(d.id)); %>
+    <% if (deps.length) { %>
+    <p class="rotulo">Departamentos (marcados pela pessoa; ajuste se precisar)</p>
+    <div class="checks">
+      <% for (const d of deps) { %>
+        <label class="check"><input type="checkbox" name="departamentos" value="<%= d.id %>" <%= s.departamento_ids.includes(d.id) ? "checked" : "" %>> <%= d.nome %></label>
+      <% } %>
+    </div>
+    <% } %>
+    <button class="primario">Aprovar e enviar convite</button>
+  </form>
+  <form method="post" action="/painel/pedidos/<%= s.id %>/recusar" class="inline" data-confirmar="Recusar o pedido de <%= s.nome %>? A pessoa não é avisada.">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="voltar" value="<%= voltar %>">
+    <input type="hidden" name="cliente_id" value="<%= s.cliente_id %>">
+    <button class="secundario">Recusar</button>
+  </form>
+</div>

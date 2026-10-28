@@ -28,7 +28,7 @@ export async function usuariosDoCliente(clienteId: number): Promise<any[]> {
 }
 
 // Só aceita departamentos do próprio cliente (nunca de outro).
-async function departamentosValidos(clienteId: number, valor: unknown): Promise<number[]> {
+export async function departamentosValidos(clienteId: number, valor: unknown): Promise<number[]> {
   const pedidos = ids(valor);
   if (!pedidos.length) return [];
   const [linhas] = await pool.query<any[]>("SELECT id FROM departamentos WHERE cliente_id = ? AND id IN (?)", [clienteId, pedidos]);
@@ -43,7 +43,7 @@ async function gravarDepartamentos(usuarioId: number, departamentos: number[]): 
   }
 }
 
-function dadosPessoa(body: any) {
+export function dadosPessoa(body: any) {
   const nome = texto(body.nome, 150);
   const email = texto(body.email, 190).toLowerCase();
   const celularBruto = texto(body.celular, 30);

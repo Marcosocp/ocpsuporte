@@ -1,0 +1,10 @@
+<%- include("../partes/topo", { titulo: "Pedidos de acesso" }) %>
+<div class="cabecalho"><h1>Pedidos de acesso</h1></div>
+<section class="cartao">
+  <p class="dica">Pedidos feitos pelos links de cadastro dos clientes. A conta só é criada quando você aprova; aí a pessoa recebe o e-mail para definir a senha.</p>
+  <% for (const s of pedidos) { %>
+    <%- include("../partes/pedido-acesso", { s, departamentos: departamentos[s.cliente_id], voltar: "lista" }) %>
+  <% } %>
+  <% if (!pedidos.length) { %><p class="sutil">Nenhum pedido aguardando aprovação.</p><% } %>
+</section>
+<%- include("../partes/rodape") %>

@@ -12,6 +12,8 @@ import { rotasConta } from "./rotas/conta.js";
 import { rotasPortal } from "./rotas/portal.js";
 import { rotasPainel } from "./rotas/painel.js";
 import { rotasCadastros } from "./rotas/cadastros.js";
+import { rotasAutocadastro } from "./rotas/autocadastro.js";
+import { contarPendentes } from "./autocadastro.js";
 import { IMPACTOS, PRIORIDADES, SITUACOES_CLIENTE, SITUACOES_EQUIPE, TIPOS, fecharResolvidosAntigos } from "./chamados.js";
 import { numero } from "./modelos-email.js";
 import { EXTENSOES_ACEITAS, MAX_ANEXOS, TAMANHO_MAXIMO, tamanhoLegivel } from "./anexos.js";
@@ -76,6 +78,11 @@ app.use((req, res, next) => {
   delete req.session.aviso;
   next();
 });
+// Administrador: quantos pedidos de acesso esperam aprovação (aparece no menu).
+app.use(async (req, res, next) => {
+  res.locals.pedidosPendentes = req.session.usuario?.papel === "admin" ? await contarPendentes() : 0;
+  next();
+});
 app.use(csrf);
 
 app.get("/saude", async (_req, res) => {
@@ -83,6 +90,7 @@ app.get("/saude", async (_req, res) => {
   res.json({ ok: true });
 });
 app.get("/", (req, res) => res.redirect(req.session.usuario ? inicioDe(req.session.usuario) : "/login"));
+app.use("/conta/cadastro", rotasAutocadastro);
 app.use(rotasConta);
 app.use("/portal", rotasPortal);
 // Ordem importa: os cadastros exigem administrador para tudo que chega a eles,

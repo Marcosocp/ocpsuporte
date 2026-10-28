@@ -1,0 +1,30 @@
+<%- include("../partes/topo", { titulo: "Pedir acesso" }) %>
+<div class="cartao estreito">
+  <h1>Pedir acesso ao suporte da OCP</h1>
+  <p class="sutil"><%= link.cliente %></p>
+  <% if (enviado) { %>
+    <p class="aviso">Pedido enviado. Quando a OCP aprovar, você vai receber um e-mail para definir sua senha.</p>
+  <% } else { %>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <form method="post">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <label>Nome completo <input name="nome" value="<%= dados.nome ?? '' %>" required maxlength="150" autocomplete="name" autofocus></label>
+    <label>E-mail da empresa <input type="email" name="email" value="<%= dados.email ?? '' %>" required maxlength="190" autocomplete="email"></label>
+    <label>Celular (WhatsApp) <input name="celular" value="<%= dados.celular ?? '' %>" maxlength="20" placeholder="(11) 91234-5678" autocomplete="tel"></label>
+    <label>Cargo ou função <input name="cargo" value="<%= dados.cargo ?? '' %>" maxlength="150" placeholder="Analista fiscal"></label>
+    <% if (departamentos.length) { %>
+      <p class="rotulo">Departamento</p>
+      <div class="checks">
+        <% const marcados = [].concat(dados.departamentos ?? []).map(String); %>
+        <% for (const d of departamentos) { %>
+          <label class="check"><input type="checkbox" name="departamentos" value="<%= d.id %>" <%= marcados.includes(String(d.id)) ? "checked" : "" %>> <%= d.nome %></label>
+        <% } %>
+      </div>
+    <% } %>
+    <label class="escondido" aria-hidden="true">Não preencha <input name="site" tabindex="-1" autocomplete="off"></label>
+    <p class="dica">Seu acesso só é liberado depois da aprovação da OCP.</p>
+    <button class="primario largo">Enviar pedido</button>
+  </form>
+  <% } %>
+</div>
+<%- include("../partes/rodape") %>

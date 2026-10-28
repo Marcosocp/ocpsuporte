@@ -14,6 +14,7 @@ import { config as configApp } from "../config.js";
 import { modeloDisponivel } from "../ia.js";
 import { carregarFeriados, recalcularAbertos } from "../prazos.js";
 import { dedicados } from "../escopo.js";
+import { VALIDADES, aprovar, enderecoDoLink, gerarLink, linkAtivo, pendentes, recusar, revogarLink } from "../autocadastro.js";
 import { consumo, csv, lancamentosDoMes, mesOuAtual, relatorioMes } from "../horas.js";
 
 export const rotasCadastros = Router();
@@ -91,6 +92,7 @@ rotasCadastros.get("/clientes/:id", async (req, res) => {
   res.render("painel/cliente", {
     cliente, contratos, sistemas, categorias: CATEGORIAS, consumoMes: await consumo(cliente.id, mesOuAtual(undefined)),
     alocados: await dedicados(cliente.id),
+    linkCadastro: await linkAtivo(cliente.id), enderecoDoLink, validades: VALIDADES, pedidos: await pendentes(cliente.id),
     prazosPadrao: Object.fromEntries(prazosPadrao.map((p) => [p.prioridade, p])),
     prazosCliente: Object.fromEntries(prazosCliente.map((p) => [p.prioridade, p])),
     usuarios: await usuariosDoCliente(cliente.id),
@@ -163,6 +165,36 @@ rotasCadastros.post("/clientes/:id/usuarios/:usuario", (req, res) =>
 rotasCadastros.post("/clientes/:id/usuarios/:usuario/convite", (req, res) =>
   salvar(req, res, voltarCliente(req, "#usuarios"),
     () => reenviarConvite(req, id(req.params.id)!, Number(req.params.usuario)), "Convite reenviado."));
+
+// Link de cadastro e pedidos de acesso: a conta só é criada quando o administrador aprova.
+rotasCadastros.post("/clientes/:id/link-cadastro", async (req, res) => {
+  const cliente = await clienteOu404(req, res);
+  if (!cliente) return;
+  await salvar(req, res, voltarCliente(req, "#link-cadastro"), () => gerarLink(req, cliente.id, req.body.validade),
+    "Link gerado. O anterior, se havia, deixou de valer.");
+});
+
+rotasCadastros.post("/clientes/:id/link-cadastro/revogar", async (req, res) => {
+  const cliente = await clienteOu404(req, res);
+  if (!cliente) return;
+  await salvar(req, res, voltarCliente(req, "#link-cadastro"), () => revogarLink(req, cliente.id), "Link revogado.");
+});
+
+rotasCadastros.get("/pedidos", async (_req, res) => {
+  const lista = await pendentes();
+  const clientes = [...new Set(lista.map((s) => s.cliente_id))];
+  const departamentos = Object.fromEntries(await Promise.all(clientes.map(async (c) => [c, await departamentosDoCliente(c)])));
+  res.render("painel/pedidos", { pedidos: lista, departamentos });
+});
+
+// "voltar" mantém o administrador onde estava (página do cliente ou lista geral).
+const voltarPedido = (req: Request) => (req.body.voltar === "cliente" ? `/painel/clientes/${id(req.body.cliente_id)}#link-cadastro` : "/painel/pedidos");
+
+rotasCadastros.post("/pedidos/:pedido/aprovar", (req, res) =>
+  salvar(req, res, voltarPedido(req), () => aprovar(req, Number(req.params.pedido), req.body), "Acesso aprovado. A pessoa recebeu o e-mail para definir a senha."));
+
+rotasCadastros.post("/pedidos/:pedido/recusar", (req, res) =>
+  salvar(req, res, voltarPedido(req), () => recusar(req, Number(req.params.pedido)), "Pedido recusado."));
 
 // Sistemas e ambientes: o que a IA vai consultar para entender o chamado. Nunca senhas.
 async function salvarSistema(req: Request, clienteId: number, sistemaId: number | null) {

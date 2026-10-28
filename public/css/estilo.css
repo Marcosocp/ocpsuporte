@@ -166,3 +166,11 @@ fieldset.escopo { border: 1px solid var(--borda); border-radius: 8px; padding: .
 fieldset.escopo legend { font-weight: 500; padding: 0 .25rem; }
 fieldset.escopo:has(input[value="todos"]:checked) .lista-escopo,
 fieldset.escopo:has(input[value="todas"]:checked) .lista-escopo { display: none; }
+
+/* Link de cadastro e pedidos de acesso */
+.copiar { display: flex; gap: .5rem; }
+.copiar input { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: .85rem; }
+.pedido { border-top: 1px solid var(--borda); padding: .75rem 0; }
+.pedido form.inline { margin-top: .5rem; }
+.barra a.destaque { font-weight: 600; color: #b54708; }
+.escondido { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
