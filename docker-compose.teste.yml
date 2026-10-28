@@ -47,6 +47,10 @@ services:
       PASTA_EMAILS: /teste/emails
       # Simula o nome público: requisições com Host suporte.teste chegam como "da internet"
       HOST_PUBLICO: suporte.teste
+      # Cloudflare Access simulado: chaves geradas pelo instancia_teste.sh (os testes assinam os tokens)
+      CF_ACCESS_DOMINIO: ocp-teste.cloudflareaccess.com
+      CF_ACCESS_AUD: aud-da-instancia-de-teste
+      CF_ACCESS_JWKS_ARQUIVO: /teste/access/jwks.json
       # Modelo real (só leitura); IA_URL_TESTE=http://127.0.0.1:9/v1 simula o modelo fora do ar
       IA_URL: ${IA_URL_TESTE:-http://vllm:8000/v1}
       IA_HORAS_SEM_RESPOSTA: "24"

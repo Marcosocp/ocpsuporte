@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { hash, verify } from "@node-rs/argon2";
+import { config } from "./config.js";
 
 export type Papel = "admin" | "analista" | "gestor" | "usuario";
 
@@ -42,10 +43,25 @@ export function exigirLogin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+/**
+ * Equipe só entra por onde o painel é permitido (Tailscale, ou Cloudflare Access com o MESMO e-mail do usuário).
+ * Devolve a mensagem de recusa, ou null se pode.
+ */
+export function equipeBarrada(req: Request, u: { papel: string; email: string }): string | null {
+  if (!ehEquipe(u as UsuarioSessao)) return null;
+  if (!req.acessoEquipe) return `A equipe da OCP entra pelo endereço do painel: ${config.painelUrl}`;
+  if (req.emailAccess && req.emailAccess !== u.email.toLowerCase()) {
+    return `Você passou pelo Cloudflare Access como ${req.emailAccess}, mas este usuário é ${u.email}. Use o mesmo e-mail nos dois.`;
+  }
+  return null;
+}
+
 // Painel: só a equipe da OCP. Cliente que cair aqui volta para o portal.
 export function exigirEquipe(req: Request, res: Response, next: NextFunction) {
   if (!req.session.usuario) return res.redirect("/login");
   if (!ehEquipe(req.session.usuario)) return res.redirect("/portal");
+  const barrada = equipeBarrada(req, req.session.usuario);
+  if (barrada) return res.status(403).render("erro", { mensagem: barrada });
   next();
 }
 

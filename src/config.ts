@@ -14,6 +14,17 @@ if (sessionSecret.length < 32) throw new Error("SESSION_SECRET precisa ter pelo 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3200";
 
+function cfAccess() {
+  const dominio = (process.env.CF_ACCESS_DOMINIO ?? "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const emissor = dominio ? `https://${dominio}` : "";
+  return {
+    aud: process.env.CF_ACCESS_AUD ?? "",
+    emissor,
+    certsUrl: `${emissor}/cdn-cgi/access/certs`,
+    jwksArquivo: process.env.CF_ACCESS_JWKS_ARQUIVO ?? "", // só na instância de teste
+  };
+}
+
 export const config = {
   raiz,
   // Anexos ficam fora da pasta pública.
@@ -22,13 +33,15 @@ export const config = {
   porta: Number(process.env.PORT ?? 3200),
   // Endereço do portal do cliente (links nos e-mails dos clientes).
   baseUrl,
-  // Endereço do painel da OCP (links nos e-mails da equipe). Hoje pelo Tailscale; na Fase 4, Cloudflare Access.
+  // Endereço do painel da OCP (links nos e-mails da equipe): pelo Cloudflare Access (ou Tailscale).
   painelUrl: process.env.PAINEL_URL ?? baseUrl,
   // Endereço e rede Docker por onde chega a internet (Cloudflare Tunnel); ver src/publico.ts.
   hostPublico: process.env.HOST_PUBLICO ?? "",
   redePublicaPrefixo: process.env.REDE_PUBLICA_PREFIXO ?? "172.31.251.",
   // Proxies confiáveis para descobrir o IP real (tailscale serve e cloudflared chegam por redes Docker).
   trustProxy: process.env.TRUST_PROXY ?? "loopback, uniquelocal",
+  // Cloudflare Access do painel (Fase 4). Sem AUD/domínio, o painel não abre pela internet (só pelo Tailscale).
+  cfAccess: cfAccess(),
   sessionSecret,
   // "smtp" envia de verdade; "arquivo" grava em data/emails (instância de teste).
   emailModo: process.env.EMAIL_MODO === "arquivo" ? "arquivo" : "smtp",

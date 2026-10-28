@@ -1,6 +1,6 @@
 # OCP Suporte — Plano do projeto
 
-Data: 2026-10-28 · Status: **Fases 1 a 3 concluídas (em uso no ZGX pelo Tailscale); aguardando aprovação para a Fase 4**
+Data: 2026-10-28 · Status: **Fases 1 a 3 concluídas; Fase 4 em andamento (código pronto, falta configurar a Cloudflare — ver 07-fase4-producao.md)**
 
 ## 1. Objetivo
 

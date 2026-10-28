@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { Router, type Request, type Response, type NextFunction } from "express";
 import rateLimit from "express-rate-limit";
 import { pool } from "../db/conexao.js";
-import { conferirSenha, exigirLogin, HASH_FALSO, hashSenha, inicioDe, validarSenhaNova } from "../auth.js";
+import { conferirSenha, equipeBarrada, exigirLogin, HASH_FALSO, hashSenha, inicioDe, validarSenhaNova } from "../auth.js";
 import { registrar } from "../auditoria.js";
 import { enviarEmail } from "../email.js";
 import { codigoLogin } from "../modelos-email.js";
@@ -51,6 +51,8 @@ async function usuarioPodeEntrar(id: number): Promise<any | null> {
 }
 
 function concluirLogin(req: Request, res: Response, next: NextFunction, u: any, via: string) {
+  const barrada = equipeBarrada(req, u);
+  if (barrada) return res.status(403).render("conta/login", { erro: barrada, email: u.email });
   // Nova sessão a cada login (evita fixação de sessão).
   req.session.regenerate(async (err) => {
     if (err) return next(err);
@@ -101,6 +103,12 @@ rotasConta.post("/login", limiteLoginIp, limiteLoginConta, async (req, res, next
   if (!u) {
     await registrar(req, "login_falhou", { email }, linhas[0]?.id ?? null);
     return res.status(401).render("conta/login", { erro: "E-mail ou senha incorretos.", email });
+  }
+  // Equipe pelo endereço público: nem manda código (o painel não abre por aqui).
+  const barrada = equipeBarrada(req, u);
+  if (barrada) {
+    await registrar(req, "login_equipe_barrado", { email_access: req.emailAccess ?? null }, u.id);
+    return res.status(403).render("conta/login", { erro: barrada, email });
   }
 
   // Navegador marcado como confiável dispensa o código.
