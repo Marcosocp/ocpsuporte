@@ -1,0 +1,18 @@
+<%# Linhas do formulário de prazos. Parâmetros: valores (por prioridade: {resposta_min, solucao_min} ou nada), padrao (para placeholders). %>
+<table class="prazos-tabela">
+  <thead><tr><th>Prioridade</th><th>1ª resposta</th><th>Solução</th></tr></thead>
+  <tbody>
+  <% for (const p of ["critica", "alta", "normal", "baixa"]) { const v = valores[p]; const d = padrao && padrao[p]; %>
+    <tr>
+      <td><span class="pr pr-<%= p %>"><%= PRIORIDADES[p] %></span></td>
+      <% for (const campo of ["resposta", "solucao"]) { const min = v ? v[campo + "_min"] : null; %>
+      <td>
+        <input name="<%= p %>_<%= campo %>_h" type="number" min="0" max="600" step="1" inputmode="numeric" value="<%= min !== null ? Math.floor(min / 60) : '' %>" placeholder="<%= d ? Math.floor(d[campo + '_min'] / 60) : '' %>" aria-label="horas"> h
+        <input name="<%= p %>_<%= campo %>_m" type="number" min="0" max="59" step="5" inputmode="numeric" value="<%= min !== null ? min % 60 : '' %>" placeholder="<%= d ? d[campo + '_min'] % 60 : '' %>" aria-label="minutos"> min
+        <% if (min !== null) { %><br><span class="sutil">= <%= duracaoUtil(min) %></span><% } %>
+      </td>
+      <% } %>
+    </tr>
+  <% } %>
+  </tbody>
+</table>

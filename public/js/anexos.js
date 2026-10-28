@@ -44,3 +44,6 @@ for (const entrada of document.querySelectorAll("input[data-anexos]")) {
 for (const select of document.querySelectorAll("select[data-enviar-ao-mudar]")) {
   select.addEventListener("change", () => select.form.submit());
 }
+
+// Botão "Imprimir / salvar PDF" (o navegador oferece salvar como PDF).
+for (const botao of document.querySelectorAll("[data-imprimir]")) botao.addEventListener("click", () => window.print());

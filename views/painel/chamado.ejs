@@ -67,6 +67,53 @@
       <% } %>
     </div>
 
+    <div class="cartao" id="prazos">
+      <h2>Prazos <span class="sutil">(horário útil)</span></h2>
+      <dl class="ficha">
+        <dt>1ª resposta</dt><dd><%- include("../partes/prazo", { p: prazos.resposta }) %><% if (ch.prazo_resposta_em) { %><br><span class="sutil">até <%= dataHora(ch.prazo_resposta_em) %></span><% } %></dd>
+        <dt>Solução</dt><dd><%- include("../partes/prazo", { p: prazos.solucao }) %><% if (ch.prazo_solucao_em && prazos.solucao.estado !== "pausado") { %><br><span class="sutil">até <%= dataHora(ch.prazo_solucao_em) %></span><% } %></dd>
+      </dl>
+      <% if (ch.status === "triagem") { %><p class="dica">Os prazos começam quando a triagem termina.</p><% } %>
+    </div>
+
+    <div class="cartao" id="horas">
+      <h2>Horas <span class="sutil">(o cliente não vê)</span></h2>
+      <% if (horas.lista.length) { %>
+      <table class="horas">
+        <% for (const a of horas.lista) { %>
+        <tr>
+          <td><%= a.dia.split("-").reverse().join("/") %><br><span class="sutil"><%= a.usuario.split(" ")[0] %></span></td>
+          <td class="quebra"><%= a.descricao %><% if (!a.faturavel) { %> <span class="etiqueta">não conta no pacote</span><% } %></td>
+          <td><strong><%= hhmm(a.minutos) %></strong>
+            <% if (usuario.papel === "admin" || a.usuario_id === usuario.id) { %>
+            <form method="post" action="/painel/chamados/<%= ch.id %>/horas/<%= a.id %>/remover" class="inline" data-confirmar="Remover este lançamento?">
+              <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link perigo" title="Remover">✕</button>
+            </form>
+            <% } %>
+          </td>
+        </tr>
+        <% } %>
+        <tr><td colspan="2"><strong>Total</strong></td><td><strong><%= hhmm(horas.total) %></strong></td></tr>
+      </table>
+      <% } else { %><p class="sutil">Nenhuma hora lançada.</p><% } %>
+      <details class="editar" <%= horas.lista.length ? "" : "open" %>>
+        <summary>+ Lançar horas</summary>
+        <form method="post" action="/painel/chamados/<%= ch.id %>/horas">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <div class="linha linha-horas">
+            <label>Data <input type="date" name="data" value="<%= hoje %>" max="<%= hoje %>" required></label>
+            <label>Horas <input type="number" name="horas" min="0" max="24" step="1" value="0" inputmode="numeric"></label>
+            <label>Minutos <input type="number" name="minutos" min="0" max="59" step="5" value="30" inputmode="numeric"></label>
+          </div>
+          <label>O que foi feito <input name="descricao" maxlength="500" required placeholder="Ex.: análise do log e reenvio da NF-e"></label>
+          <% if (usuario.papel === "admin") { %>
+          <label class="check"><input type="checkbox" name="faturavel" value="0"> Não conta no pacote do cliente (retrabalho, cortesia…)</label>
+          <% } %>
+          <button class="primario">Lançar</button>
+        </form>
+      </details>
+    </div>
+
     <% if (usuario.papel === "admin") { %>
     <form method="post" action="/painel/chamados/<%= ch.id %>/distribuir" class="cartao">
       <h2>Distribuição</h2>

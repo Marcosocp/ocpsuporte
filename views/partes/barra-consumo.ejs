@@ -1,0 +1,4 @@
+<%# Barra de consumo do pacote. Parâmetro: c (consumo). %>
+<% if (c.percentual !== null) { %>
+<div class="barra-consumo <%= c.percentual >= 100 ? 'estourou' : c.percentual >= 80 ? 'alto' : '' %>" title="<%= String(c.percentual).replace('.', ',') %>%"><span style="width: <%= Math.min(100, c.percentual) %>%"></span></div>
+<% } %>

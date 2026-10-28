@@ -9,6 +9,7 @@ import { avisar, type Email } from "./email.js";
 import { salvarAnexos } from "./anexos.js";
 import * as modelos from "./modelos-email.js";
 import { clienteRespondeu, enfileirar, interromperTriagem, triagemAtiva } from "./triagem.js";
+import { aposMudanca } from "./prazos.js";
 
 export const TIPOS = { incidente: "Erro / problema", duvida: "Dúvida", solicitacao: "Solicitação", melhoria: "Melhoria" } as const;
 export const IMPACTOS = { pessoa: "Só eu", setor: "Meu setor", empresa: "A empresa toda / operação parada" } as const;
@@ -152,6 +153,7 @@ export async function abrirChamado(req: Request, dados: NovoChamado, arquivos: E
     return r.insertId as number;
   });
   await registrar(req, "chamado_aberto", { chamado_id: id, canal: dados.canal, solicitante_id: dados.solicitanteId });
+  await aposMudanca(id);
 
   const ch = await buscarChamado({ ...autor, papel: "admin" }, id);
   const emails: Email[] = [modelos.chamadoAberto({ nome: ch.solicitante_nome, email: ch.solicitante_email }, ch)];
@@ -183,6 +185,7 @@ export async function responderComoCliente(req: Request, ch: any, texto: string,
     );
   });
   await registrar(req, reaberto ? "chamado_reaberto" : "resposta_cliente", { chamado_id: ch.id, status: novoStatus });
+  await aposMudanca(ch.id);
   if (ch.status === "triagem") {
     // Respondeu às perguntas do assistente: a equipe ainda não está no chamado; volta para a fila da triagem.
     await clienteRespondeu(ch.id);
@@ -223,6 +226,7 @@ export async function responderComoEquipe(
     );
   });
   if (novoStatus !== "triagem") await interromperTriagem(ch.id);
+  await aposMudanca(ch.id);
   await registrar(req, interna ? "nota_interna" : "resposta_equipe", {
     chamado_id: ch.id, status: novoStatus !== ch.status ? novoStatus : undefined, assumiu: assumir || undefined,
   });
@@ -268,6 +272,7 @@ export async function distribuir(
     status: status !== ch.status ? status : undefined,
   };
   if (status !== "triagem") await interromperTriagem(ch.id);
+  await aposMudanca(ch.id, { prioridadeMudou: ch.prioridade !== dados.prioridade });
   await registrar(req, "chamado_distribuido", { chamado_id: ch.id, ...alteracoes });
 
   if (dados.responsavelId && mudou(ch.responsavel_id, dados.responsavelId) && dados.responsavelId !== u.id) {
@@ -286,6 +291,7 @@ export async function assumir(req: Request, ch: any): Promise<void> {
     [u.id, ch.id],
   );
   await interromperTriagem(ch.id);
+  await aposMudanca(ch.id);
   await registrar(req, "chamado_assumido", { chamado_id: ch.id });
 }
 
@@ -293,6 +299,7 @@ export async function assumir(req: Request, ch: any): Promise<void> {
 export async function confirmarSolucao(req: Request, ch: any): Promise<void> {
   if (ch.status !== "resolvido") throw new RegraChamado("O chamado não está aguardando confirmação.");
   await pool.query("UPDATE chamados SET status = 'fechado', fechado_em = UTC_TIMESTAMP(), atualizado_em = UTC_TIMESTAMP() WHERE id = ?", [ch.id]);
+  await aposMudanca(ch.id);
   await registrar(req, "solucao_confirmada", { chamado_id: ch.id });
 }
 
@@ -308,6 +315,7 @@ export async function cancelar(req: Request, ch: any, motivo: string): Promise<v
     await c.query("UPDATE chamados SET status = 'cancelado', fechado_em = UTC_TIMESTAMP(), atualizado_em = UTC_TIMESTAMP() WHERE id = ?", [ch.id]);
   });
   await interromperTriagem(ch.id);
+  await aposMudanca(ch.id);
   await registrar(req, "chamado_cancelado", { chamado_id: ch.id, motivo });
   if (pelaEquipe) {
     avisar([modelos.respostaParaCliente({ nome: ch.solicitante_nome, email: ch.solicitante_email }, ch, u.nome, `Chamado cancelado${motivo ? `: ${motivo}` : "."}`, false)]);
@@ -323,6 +331,7 @@ export async function reabrir(req: Request, ch: any): Promise<void> {
   await pool.query(
     "UPDATE chamados SET status = ?, resolvido_em = NULL, fechado_em = NULL, atualizado_em = UTC_TIMESTAMP() WHERE id = ?", [status, ch.id],
   );
+  await aposMudanca(ch.id);
   await registrar(req, "chamado_reaberto", { chamado_id: ch.id, status });
 }
 
@@ -336,6 +345,7 @@ export async function fecharResolvidosAntigos(dias: number): Promise<number> {
       await inserirMensagem(c, id, null, "publica", `Chamado encerrado automaticamente: sem retorno ${dias} dias depois de resolvido.`);
       await c.query("UPDATE chamados SET status = 'fechado', fechado_em = UTC_TIMESTAMP(), atualizado_em = UTC_TIMESTAMP() WHERE id = ? AND status = 'resolvido'", [id]);
     });
+    await aposMudanca(id);
     await registrar(null, "fechado_automaticamente", { chamado_id: id }, null);
   }
   return linhas.length;

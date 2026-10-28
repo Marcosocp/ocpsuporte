@@ -13,6 +13,9 @@ services:
       MYSQL_RANDOM_ROOT_PASSWORD: "yes"
     tmpfs:
       - /var/lib/mysql
+    # Só para os testes manipularem datas (prazos); nunca existe na produção.
+    ports:
+      - "127.0.0.1:3311:3306"
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uteste -pteste-senha --silent"]
       interval: 3s
@@ -48,6 +51,7 @@ services:
       IA_URL: ${IA_URL_TESTE:-http://vllm:8000/v1}
       IA_HORAS_SEM_RESPOSTA: "24"
       IA_ESPERA_TENTATIVA_S: "2"
+      PRAZOS_INTERVALO_S: "3"
     volumes:
       - ./:/app:ro
       - ${OCPSUPORTE_TESTE_DIR}:/teste

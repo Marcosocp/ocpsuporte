@@ -14,7 +14,7 @@
     <% if (equipe) { %>
       <a href="/painel">Chamados</a>
       <a href="/painel/chamados/novo">Abrir chamado</a>
-      <% if (usuario.papel === "admin") { %><a href="/painel/clientes">Clientes</a><a href="/painel/equipe">Equipe</a><a href="/painel/ia">Assistente</a><% } %>
+      <% if (usuario.papel === "admin") { %><a href="/painel/clientes">Clientes</a><a href="/painel/horas">Horas</a><a href="/painel/equipe">Equipe</a><a href="/painel/ia">Assistente</a><a href="/painel/configuracoes">Configurações</a><% } %>
     <% } else { %>
       <a href="/portal">Meus chamados</a>
       <a href="/portal/chamados/novo">Abrir chamado</a>

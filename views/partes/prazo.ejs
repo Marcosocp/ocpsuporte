@@ -1,0 +1,2 @@
+<%# Selo de prazo. Parâmetro: p = { estado, texto }. %>
+<% if (p.estado !== "sem") { %><span class="prazo prazo-<%= p.estado %>"><%= p.estado === "atrasado" ? "⛔ " : p.estado === "atencao" ? "⏰ " : p.estado === "pausado" ? "⏸ " : (p.estado === "cumprido" ? "✓ " : p.estado === "cumprido_atrasado" ? "✗ " : "") %><%= p.texto %></span><% } else { %><span class="sutil">—</span><% } %>

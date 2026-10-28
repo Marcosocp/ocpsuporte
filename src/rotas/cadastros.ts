@@ -12,6 +12,8 @@ import { escolha, id, ids, texto } from "../formulario.js";
 import { cnpjValido, emailValido, limparDigitos, normalizarCelular } from "../validacao.js";
 import { config as configApp } from "../config.js";
 import { modeloDisponivel } from "../ia.js";
+import { carregarFeriados, recalcularAbertos } from "../prazos.js";
+import { consumo, csv, lancamentosDoMes, mesOuAtual, relatorioMes } from "../horas.js";
 
 export const rotasCadastros = Router();
 rotasCadastros.use(exigirEquipe, exigirAdmin);
@@ -83,8 +85,12 @@ rotasCadastros.get("/clientes/:id", async (req, res) => {
     [cliente.id],
   );
   for (const s of sistemas) s.departamento_ids = s.departamento_ids ? String(s.departamento_ids).split(",").map(Number) : [];
+  const [prazosPadrao] = await pool.query<any[]>("SELECT * FROM prazos_padrao");
+  const [prazosCliente] = await pool.query<any[]>("SELECT * FROM prazos_cliente WHERE cliente_id = ?", [cliente.id]);
   res.render("painel/cliente", {
-    cliente, contratos, sistemas, categorias: CATEGORIAS,
+    cliente, contratos, sistemas, categorias: CATEGORIAS, consumoMes: await consumo(cliente.id, mesOuAtual(undefined)),
+    prazosPadrao: Object.fromEntries(prazosPadrao.map((p) => [p.prioridade, p])),
+    prazosCliente: Object.fromEntries(prazosCliente.map((p) => [p.prioridade, p])),
     usuarios: await usuariosDoCliente(cliente.id),
     departamentos: await departamentosDoCliente(cliente.id),
   });
@@ -320,3 +326,108 @@ rotasCadastros.post("/ia/roteiros/:tipo", (req, res) => salvar(req, res, "/paine
   if (!r.affectedRows) throw new ErroCadastro("Tipo de chamado inválido.");
   await registrar(req, "roteiro_alterado", { tipo: req.params.tipo });
 }, "Roteiro salvo. Vale a partir da próxima triagem."));
+
+// --- Horas: relatório mensal por cliente (só a OCP; o cliente recebe quando pedir) ---
+
+rotasCadastros.get("/horas", async (req, res) => {
+  const mes = mesOuAtual(req.query.mes);
+  res.render("painel/horas", { mes, linhas: await relatorioMes(mes) });
+});
+
+rotasCadastros.get("/horas/:cliente", async (req, res) => {
+  const mes = mesOuAtual(req.query.mes);
+  const clienteId = id(req.params.cliente);
+  if (!clienteId) return res.status(404).render("erro", { mensagem: "Cliente não encontrado." });
+  const c = await consumo(clienteId, mes);
+  if (!c.cliente) return res.status(404).render("erro", { mensagem: "Cliente não encontrado." });
+  const lancamentos = await lancamentosDoMes(clienteId, mes);
+  if (req.query.formato === "csv") {
+    await registrar(req, "horas_exportadas", { cliente_id: clienteId, mes });
+    const nome = `horas-${c.cliente.normalize("NFD").replace(/[^\w]+/g, "-").toLowerCase()}-${mes}.csv`;
+    return res.type("text/csv; charset=utf-8").attachment(nome).send(csv(lancamentos));
+  }
+  // Agrupado por chamado, para o relatório que vai ao cliente.
+  const porChamado = new Map<number, { id: number; titulo: string; solicitante: string; minutos: number; itens: any[] }>();
+  for (const l of lancamentos) {
+    const g = porChamado.get(l.chamado_id) ?? { id: l.chamado_id, titulo: l.titulo, solicitante: l.solicitante, minutos: 0, itens: [] as any[] };
+    g.itens.push(l);
+    if (l.faturavel) g.minutos += l.minutos;
+    porChamado.set(l.chamado_id, g);
+  }
+  res.render("painel/horas-cliente", { mes, c, grupos: [...porChamado.values()], imprimir: req.query.imprimir === "1" });
+});
+
+// --- Configurações: prazos padrão e feriados ---
+
+const PRIORIDADES_ORDEM = ["critica", "alta", "normal", "baixa"] as const;
+
+// "1h30", "90", "1,5h" não: o formulário manda horas e minutos separados; aqui só converte e confere.
+function minutosDoFormulario(body: any, campo: string): number {
+  const h = Number(String(body[`${campo}_h`] ?? "0").replace(",", ".")) || 0;
+  const m = Number(body[`${campo}_m`] ?? 0) || 0;
+  const total = Math.round(h * 60 + m);
+  if (!(total >= 1 && total <= 60 * 600)) throw new ErroCadastro("Prazo inválido (de 1 minuto a 60 dias úteis).");
+  return total;
+}
+
+rotasCadastros.get("/configuracoes", async (_req, res) => {
+  const [prazos] = await pool.query<any[]>("SELECT * FROM prazos_padrao ORDER BY FIELD(prioridade, 'critica', 'alta', 'normal', 'baixa')");
+  const [feriados] = await pool.query<any[]>("SELECT DATE_FORMAT(data, '%Y-%m-%d') AS data, nome FROM feriados WHERE data >= CURDATE() - INTERVAL 30 DAY ORDER BY data");
+  res.render("painel/configuracoes", { prazos, feriados });
+});
+
+rotasCadastros.post("/configuracoes/prazos", (req, res) => salvar(req, res, "/painel/configuracoes#prazos", async () => {
+  const novos = PRIORIDADES_ORDEM.map((p) => ({ p, resposta: minutosDoFormulario(req.body, `${p}_resposta`), solucao: minutosDoFormulario(req.body, `${p}_solucao`) }));
+  for (const n of novos) {
+    if (n.resposta > n.solucao) throw new ErroCadastro("O prazo de 1ª resposta não pode ser maior que o de solução.");
+  }
+  for (const n of novos) {
+    await pool.query("UPDATE prazos_padrao SET resposta_min = ?, solucao_min = ? WHERE prioridade = ?", [n.resposta, n.solucao, n.p]);
+  }
+  const n = await recalcularAbertos();
+  await registrar(req, "prazos_padrao_alterados", { prazos: novos });
+  return `Prazos padrão salvos. ${n} chamado(s) aberto(s) recalculado(s).`;
+}, ""));
+
+rotasCadastros.post("/configuracoes/feriados", (req, res) => salvar(req, res, "/painel/configuracoes#feriados", async () => {
+  const data = String(req.body.data ?? "");
+  const nome = texto(req.body.nome, 100);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !nome) throw new ErroCadastro("Informe a data e o nome do feriado.");
+  await pool.query("INSERT INTO feriados (data, nome) VALUES (?, ?) ON DUPLICATE KEY UPDATE nome = VALUES(nome)", [data, nome]);
+  await carregarFeriados();
+  const n = await recalcularAbertos();
+  await registrar(req, "feriado_salvo", { data, nome });
+  return `Feriado salvo. ${n} chamado(s) aberto(s) recalculado(s).`;
+}, ""));
+
+rotasCadastros.post("/configuracoes/feriados/:data/remover", (req, res) => salvar(req, res, "/painel/configuracoes#feriados", async () => {
+  await pool.query("DELETE FROM feriados WHERE data = ?", [String(req.params.data)]);
+  await carregarFeriados();
+  const n = await recalcularAbertos();
+  await registrar(req, "feriado_removido", { data: req.params.data });
+  return `Feriado removido. ${n} chamado(s) aberto(s) recalculado(s).`;
+}, ""));
+
+// Prazos combinados com o cliente: prioridade em branco = usa o padrão.
+rotasCadastros.post("/clientes/:id/prazos", async (req, res) => {
+  const cliente = await clienteOu404(req, res);
+  if (!cliente) return;
+  await salvar(req, res, voltarCliente(req, "#prazos"), async () => {
+    const definidos: Record<string, { resposta: number; solucao: number }> = {};
+    for (const p of PRIORIDADES_ORDEM) {
+      const vazio = ["resposta_h", "resposta_m", "solucao_h", "solucao_m"].every((k) => !String(req.body[`${p}_${k}`] ?? "").trim());
+      if (vazio) continue;
+      const resposta = minutosDoFormulario(req.body, `${p}_resposta`);
+      const solucao = minutosDoFormulario(req.body, `${p}_solucao`);
+      if (resposta > solucao) throw new ErroCadastro("O prazo de 1ª resposta não pode ser maior que o de solução.");
+      definidos[p] = { resposta, solucao };
+    }
+    await pool.query("DELETE FROM prazos_cliente WHERE cliente_id = ?", [cliente.id]);
+    for (const [p, v] of Object.entries(definidos)) {
+      await pool.query("INSERT INTO prazos_cliente (cliente_id, prioridade, resposta_min, solucao_min) VALUES (?, ?, ?, ?)", [cliente.id, p, v.resposta, v.solucao]);
+    }
+    const n = await recalcularAbertos(cliente.id);
+    await registrar(req, "prazos_cliente_alterados", { cliente_id: cliente.id, prazos: definidos });
+    return `Prazos do cliente salvos. ${n} chamado(s) aberto(s) recalculado(s).`;
+  }, "");
+});

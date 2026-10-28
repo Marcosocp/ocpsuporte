@@ -1,0 +1,36 @@
+<%- include("../partes/topo", { titulo: "Horas · " + c.cliente }) %>
+<div class="cabecalho">
+  <h1>Relatório de horas — <%= c.cliente %></h1>
+  <div class="botoes nao-imprimir">
+    <a href="/painel/horas?mes=<%= mes %>">← todos os clientes</a>
+    <a class="botao secundario" href="?mes=<%= mes %>&formato=csv">Baixar planilha (CSV)</a>
+    <button class="primario" data-imprimir>Imprimir / salvar PDF</button>
+  </div>
+</div>
+<section class="cartao">
+  <dl class="ficha">
+    <dt>Mês</dt><dd><%= mes.split("-").reverse().join("/") %></dd>
+    <dt>Pacote contratado</dt><dd><%= c.pacoteMin !== null ? hhmm(c.pacoteMin) + " h" : "sem contrato no mês" %></dd>
+    <dt>Horas utilizadas</dt><dd><strong><%= hhmm(c.faturavelMin) %> h</strong><% if (c.percentual !== null) { %> (<%= String(c.percentual).replace(".", ",") %>% do pacote)<% } %></dd>
+    <% if (c.pacoteMin !== null) { %><dt>Saldo</dt><dd><%= hhmm(Math.max(0, c.pacoteMin - c.faturavelMin)) %> h <span class="sutil">(não acumula para o mês seguinte)</span></dd><% } %>
+    <% if (c.excedenteMin) { %><dt>Excedente</dt><dd class="perigo"><strong><%= hhmm(c.excedenteMin) %> h</strong><%= c.valorExcedente !== null ? " · " + c.valorExcedente.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "" %></dd><% } %>
+  </dl>
+</section>
+<% if (!grupos.length) { %><p class="sutil">Nenhuma hora lançada neste mês.</p><% } %>
+<% for (const g of grupos) { %>
+<section class="cartao">
+  <h2><%= numero(g.id) %> · <%= g.titulo %> <span class="sutil">— <%= g.solicitante %> · <%= hhmm(g.minutos) %> h</span></h2>
+  <table class="horas">
+    <% for (const l of g.itens) { %>
+      <tr>
+        <td><%= l.dia.split("-").reverse().join("/") %></td>
+        <td><%= l.usuario %></td>
+        <td class="quebra"><%= l.descricao %><% if (!l.faturavel) { %> <span class="etiqueta">não conta no pacote</span><% } %></td>
+        <td><%= hhmm(l.minutos) %></td>
+      </tr>
+    <% } %>
+  </table>
+</section>
+<% } %>
+<p class="sutil">Gerado em <%= dataHora(new Date()) %> · OCP Soluções em TI</p>
+<%- include("../partes/rodape") %>

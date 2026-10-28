@@ -158,3 +158,35 @@ export function respostaParaEquipe(p: Pessoa, c: Chamado, autor: string, texto: 
     botao: { texto: "Abrir no painel", url: linkPainel(c) },
   });
 }
+
+// --- Prazos e horas (só para a equipe) ---
+
+const quando = (d: Date) => new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+
+export function prazoAlerta(p: Pessoa, c: Chamado & { prioridade?: string }, tipo: "resposta" | "solucao", estourou: boolean, prazo: Date): Email {
+  const qual = tipo === "resposta" ? "primeira resposta" : "solução";
+  return montar(p.email, `${estourou ? "⛔ Prazo estourado" : "⏰ Prazo vencendo"}: ${qual} do chamado ${numero(c.id)} (${c.cliente})`, {
+    titulo: estourou ? `Prazo de ${qual} estourado` : `Prazo de ${qual} vencendo`,
+    paragrafos: [
+      `Chamado <strong>${numero(c.id)} “${esc(c.titulo)}”</strong> (${esc(c.cliente)}).`,
+      estourou
+        ? `O prazo de ${qual} venceu em <strong>${quando(prazo)}</strong>.`
+        : `O prazo de ${qual} vence em <strong>${quando(prazo)}</strong>.`,
+    ],
+    botao: { texto: "Abrir no painel", url: linkPainel(c) },
+  });
+}
+
+export function alertaHoras(p: Pessoa, c: { cliente: string; mes: string; faturavelMin: number; pacoteMin: number | null; percentual: number | null }, nivel: number): Email {
+  const h = (m: number) => `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
+  const mes = c.mes.split("-").reverse().join("/");
+  return montar(p.email, `${nivel >= 100 ? "Pacote de horas esgotado" : `Pacote de horas em ${nivel}%`}: ${c.cliente} (${mes})`, {
+    titulo: nivel >= 100 ? "Pacote de horas esgotado" : `Pacote de horas chegou a ${nivel}%`,
+    paragrafos: [
+      `<strong>${esc(c.cliente)}</strong> já usou <strong>${h(c.faturavelMin)}</strong> de <strong>${h(c.pacoteMin ?? 0)}</strong> em ${mes} (${String(c.percentual).replace(".", ",")}%).`,
+      nivel >= 100 ? "As horas a partir de agora são excedentes." : "Fique de olho no consumo até o fim do mês.",
+    ],
+    botao: { texto: "Ver relatório de horas", url: `${config.painelUrl}/painel/horas?mes=${c.mes}` },
+  });
+}
+

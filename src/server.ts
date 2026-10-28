@@ -17,9 +17,14 @@ import { numero } from "./modelos-email.js";
 import { EXTENSOES_ACEITAS, MAX_ANEXOS, TAMANHO_MAXIMO, tamanhoLegivel } from "./anexos.js";
 import { formatarCelular, formatarCnpj } from "./validacao.js";
 import { concluirSemResposta, iniciarTriagem } from "./triagem.js";
+import { carregarFeriados, recalcularAbertos, verificarPrazos } from "./prazos.js";
+import { duracaoUtil } from "./expediente.js";
+import { hhmm } from "./horas.js";
 
 const aplicadas = await migrar();
 if (aplicadas.length) console.log(`Migrações aplicadas: ${aplicadas.join(", ")}`);
+await carregarFeriados();
+await recalcularAbertos(); // prazos sempre coerentes com a tabela e os feriados atuais
 
 const app = express();
 app.set("view engine", "ejs");
@@ -59,7 +64,7 @@ app.locals.dataHora = (d: Date | string | null) =>
 app.locals.data = (d: Date | string | null) => (d ? new Date(d).toLocaleDateString("pt-BR", fuso) : "");
 app.locals.dataIso = (d: Date | string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 Object.assign(app.locals, {
-  numero, tamanhoLegivel, formatarCelular, formatarCnpj, TIPOS, IMPACTOS, PRIORIDADES, SITUACOES_CLIENTE, SITUACOES_EQUIPE,
+  numero, tamanhoLegivel, duracaoUtil, hhmm, formatarCelular, formatarCnpj, TIPOS, IMPACTOS, PRIORIDADES, SITUACOES_CLIENTE, SITUACOES_EQUIPE,
   EXTENSOES_ACEITAS, MAX_ANEXOS, TAMANHO_MAXIMO_MB: TAMANHO_MAXIMO / 1024 / 1024,
 });
 
@@ -106,3 +111,10 @@ async function tarefas() {
   if (fechados) console.log(`Tarefas: ${fechados} chamado(s) fechado(s) automaticamente`);
 }
 setInterval(() => tarefas().catch((e) => console.error("Falha nas tarefas periódicas:", e)), 10 * 60 * 1000).unref();
+
+// Prazos: avisa antes de vencer e escala quando estoura (a cada 5 minutos).
+const prazos = () => verificarPrazos()
+  .then((n) => { if (n) console.log(`Prazos: ${n} aviso(s) enviado(s)`); })
+  .catch((e) => console.error("Falha na verificação de prazos:", e));
+setInterval(prazos, Number(process.env.PRAZOS_INTERVALO_S ?? 300) * 1000).unref();
+prazos();

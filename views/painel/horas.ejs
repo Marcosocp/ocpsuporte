@@ -1,0 +1,31 @@
+<%- include("../partes/topo", { titulo: "Horas" }) %>
+<% const [ano, m] = mes.split("-").map(Number); const ant = new Date(Date.UTC(ano, m - 2, 1)).toISOString().slice(0, 7); const prox = new Date(Date.UTC(ano, m, 1)).toISOString().slice(0, 7); %>
+<div class="cabecalho">
+  <h1>Horas de <%= mes.split("-").reverse().join("/") %></h1>
+  <div class="botoes">
+    <a href="?mes=<%= ant %>">← mês anterior</a>
+    <form method="get" class="inline"><input type="month" name="mes" value="<%= mes %>" aria-label="Mês" data-enviar-ao-mudar></form>
+    <a href="?mes=<%= prox %>">próximo mês →</a>
+  </div>
+</div>
+<p class="sutil">Só horas que contam no pacote. As horas não usadas zeram a cada mês. O cliente não vê nada disto; o relatório de cada cliente pode ser impresso em PDF ou exportado para planilha.</p>
+<div class="cartao">
+  <table>
+    <thead><tr><th>Cliente</th><th class="numero">Pacote</th><th class="numero">Usadas</th><th>Consumo</th><th class="numero">Saldo</th><th class="numero">Excedente</th><th class="numero">Valor excedente</th></tr></thead>
+    <tbody>
+    <% for (const c of linhas) { %>
+      <tr>
+        <td><a href="/painel/horas/<%= c.clienteId %>?mes=<%= mes %>"><%= c.cliente %></a></td>
+        <td class="numero"><%= c.pacoteMin !== null ? hhmm(c.pacoteMin) : "sem contrato" %></td>
+        <td class="numero"><strong><%= hhmm(c.faturavelMin) %></strong><% if (c.naoFaturavelMin) { %><br><span class="sutil">+<%= hhmm(c.naoFaturavelMin) %> fora do pacote</span><% } %></td>
+        <td><%- include("../partes/barra-consumo", { c }) %><span class="sutil"><%= c.percentual !== null ? String(c.percentual).replace(".", ",") + "%" : "" %></span></td>
+        <td class="numero"><%= c.pacoteMin !== null ? hhmm(Math.max(0, c.pacoteMin - c.faturavelMin)) : "—" %></td>
+        <td class="numero <%= c.excedenteMin ? 'perigo' : '' %>"><%= c.excedenteMin ? hhmm(c.excedenteMin) : "—" %></td>
+        <td class="numero"><%= c.valorExcedente ? c.valorExcedente.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—" %></td>
+      </tr>
+    <% } %>
+    <% if (!linhas.length) { %><tr><td colspan="7" class="sutil">Nenhum cliente.</td></tr><% } %>
+    </tbody>
+  </table>
+</div>
+<%- include("../partes/rodape") %>

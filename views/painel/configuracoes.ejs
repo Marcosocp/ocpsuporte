@@ -1,0 +1,33 @@
+<%- include("../partes/topo", { titulo: "Configurações" }) %>
+<h1>Configurações</h1>
+<form method="post" action="/painel/configuracoes/prazos" class="cartao" id="prazos">
+  <h2>Prazos padrão de atendimento</h2>
+  <p class="dica">Em horas úteis: segunda a sexta, 8h às 18h, sem feriados (1 dia útil = 10 h). O prazo começa quando o chamado chega à equipe (depois da triagem) e o de solução fica pausado enquanto se espera o cliente. Clientes podem ter prazos próprios (na página do cliente).</p>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <%- include("../partes/prazos-form", { valores: Object.fromEntries(prazos.map((p) => [p.prioridade, p])), padrao: null }) %>
+  <p><button class="primario">Salvar prazos</button></p>
+</form>
+
+<section class="cartao" id="feriados">
+  <h2>Feriados</h2>
+  <p class="dica">Dias sem expediente: os prazos não correm. Inclua os feriados estaduais/municipais e emendas que a OCP adotar.</p>
+  <table>
+    <tbody>
+    <% for (const f of feriados) { %>
+      <tr>
+        <td><%= f.data.split("-").reverse().join("/") %> · <%= ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][new Date(f.data + "T12:00:00Z").getUTCDay()] %></td>
+        <td><%= f.nome %></td>
+        <td><form method="post" action="/painel/configuracoes/feriados/<%= f.data %>/remover" class="inline" data-confirmar="Remover <%= f.nome %>?">
+          <input type="hidden" name="_csrf" value="<%= csrf %>"><button class="link perigo">remover</button></form></td>
+      </tr>
+    <% } %>
+    </tbody>
+  </table>
+  <form method="post" action="/painel/configuracoes/feriados" class="botoes">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="date" name="data" required aria-label="Data">
+    <input name="nome" maxlength="100" required placeholder="Nome (ex.: Aniversário da cidade)" aria-label="Nome">
+    <button class="secundario">Adicionar</button>
+  </form>
+</section>
+<%- include("../partes/rodape") %>

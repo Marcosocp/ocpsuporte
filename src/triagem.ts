@@ -12,6 +12,7 @@ import { avisar, type Email } from "./email.js";
 import * as modelos from "./modelos-email.js";
 import { FalhaModelo, respostaEstruturada, type MensagemModelo } from "./ia.js";
 import { IMPACTOS, PRIORIDADES, SELECT_CHAMADO, TIPOS } from "./chamados.js";
+import { aposMudanca } from "./prazos.js";
 
 const MAX_TENTATIVAS = 3;
 const MAX_IMAGENS = 3;
@@ -355,6 +356,7 @@ async function processar(chamadoId: number): Promise<void> {
   if (!emTriagem) return;
 
   await pool.query("UPDATE chamados SET status = 'novo', atualizado_em = UTC_TIMESTAMP() WHERE id = ? AND status = 'triagem'", [chamadoId]);
+  await aposMudanca(chamadoId); // o prazo começa agora: o chamado chegou à equipe
   if (ch.canal !== "painel") await mensagemIa(chamadoId, f.mensagem_cliente.trim() || "Obrigado! Seu chamado foi encaminhado à equipe de suporte.");
   await avisarEquipe(ch, f);
 }
@@ -394,6 +396,7 @@ async function falhou(chamadoId: number, erro: Error): Promise<void> {
   await pool.query("UPDATE triagens SET estado = 'falhou', tentativas = ?, erro = ? WHERE chamado_id = ?", [tentativas, mensagem, chamadoId]);
   const [r] = await pool.query<any>("UPDATE chamados SET status = 'novo', atualizado_em = UTC_TIMESTAMP() WHERE id = ? AND status = 'triagem'", [chamadoId]);
   await registrar(null, "triagem_falhou", { chamado_id: chamadoId, erro: mensagem }, null);
+  await aposMudanca(chamadoId);
   if (r.affectedRows) {
     const [c] = await pool.query<any[]>(`${SELECT_CHAMADO} WHERE c.id = ?`, [chamadoId]);
     await avisarEquipe(c[0], null);

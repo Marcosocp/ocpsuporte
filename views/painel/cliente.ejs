@@ -53,6 +53,23 @@
   </details>
 </section>
 
+<section class="cartao" id="consumo">
+  <h2>Horas deste mês <span class="sutil">(só a OCP vê)</span></h2>
+  <% const c = consumoMes; %>
+  <p><strong><%= hhmm(c.faturavelMin) %></strong> usadas<%= c.pacoteMin !== null ? " de " + hhmm(c.pacoteMin) + " (" + String(c.percentual).replace(".", ",") + "%)" : " — sem contrato vigente" %>
+    <% if (c.excedenteMin) { %> · <span class="perigo">excedente <%= hhmm(c.excedenteMin) %></span><% } %>
+    · <a href="/painel/horas/<%= cliente.id %>">relatório</a></p>
+  <%- include("../partes/barra-consumo", { c }) %>
+</section>
+
+<form method="post" action="/painel/clientes/<%= cliente.id %>/prazos" class="cartao" id="prazos">
+  <h2>Prazos de atendimento</h2>
+  <p class="dica">Deixe em branco para usar o padrão (mostrado em cinza). Preencha só as prioridades combinadas de forma diferente com este cliente.</p>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <%- include("../partes/prazos-form", { valores: prazosCliente, padrao: prazosPadrao }) %>
+  <p><button class="secundario">Salvar prazos do cliente</button></p>
+</form>
+
 <section class="cartao" id="departamentos">
   <h2>Departamentos</h2>
   <%- include("../partes/departamentos", { departamentos, rota: "/painel/clientes/" + cliente.id }) %>

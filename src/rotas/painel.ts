@@ -9,23 +9,35 @@ import {
 } from "../chamados.js";
 import { arquivosRecebidos, escolha, id, receberUpload, texto } from "../formulario.js";
 import { buscarTriagem, concluirAgora, enfileirar } from "../triagem.js";
+import { situacaoPrazos } from "../prazos.js";
+import { ErroHoras, doChamado, lancar, remover } from "../horas.js";
+import { dataLocal } from "../expediente.js";
 
 export const rotasPainel = Router();
 rotasPainel.use(exigirEquipe);
 
-const erroDeUsuario = (e: unknown): e is Error => e instanceof RegraChamado || e instanceof AnexoInvalido;
+const erroDeUsuario = (e: unknown): e is Error => e instanceof RegraChamado || e instanceof AnexoInvalido || e instanceof ErroHoras;
 
 // Filas do painel. "distribuir" = sem responsável (para o analista: os da área dele).
 const FILAS = {
   distribuir: { titulo: "Sem responsável", sql: "c.responsavel_id IS NULL AND c.status IN (?)", valores: [ABERTAS] },
   meus: { titulo: "Meus", sql: "c.responsavel_id = ? AND c.status IN (?)", valores: ["EU", ABERTAS] },
   abertos: { titulo: "Todos abertos", sql: "c.status IN (?)", valores: [ABERTAS] },
+  atrasados: {
+    titulo: "Prazo estourado",
+    sql: `c.status IN ('novo', 'atribuido', 'em_atendimento') AND ((c.primeira_resposta_em IS NULL AND c.prazo_resposta_em < UTC_TIMESTAMP())
+          OR (c.resolvido_em IS NULL AND c.prazo_solucao_em < UTC_TIMESTAMP()))`,
+    valores: [],
+  },
   aguardando: { titulo: "Aguardando cliente", sql: "c.status IN ('aguardando_cliente', 'resolvido')", valores: [] },
   encerrados: { titulo: "Encerrados", sql: "c.status IN (?)", valores: [ENCERRADAS] },
 } as const;
 type Fila = keyof typeof FILAS;
 
 const ORDEM_PRIORIDADE = "FIELD(c.prioridade, 'critica', 'alta', 'normal', 'baixa')";
+// Filas abertas: primeiro o que vence antes (1ª resposta pendente, senão solução); pausados e em triagem no fim.
+const ORDEM_PRAZO = `CASE WHEN c.status IN ('aguardando_cliente', 'resolvido', 'triagem') OR c.prazo_resposta_em IS NULL THEN 1 ELSE 0 END,
+  CASE WHEN c.primeira_resposta_em IS NULL THEN c.prazo_resposta_em ELSE c.prazo_solucao_em END, ${ORDEM_PRIORIDADE}, c.criado_em`;
 
 rotasPainel.get("/", async (req, res) => {
   const u = req.session.usuario!;
@@ -45,7 +57,8 @@ rotasPainel.get("/", async (req, res) => {
   }
 
   const [chamados] = await pool.query<any[]>(
-    `SELECT c.id, c.titulo, c.status, c.tipo, c.prioridade, c.criado_em, c.atualizado_em,
+    `SELECT c.id, c.titulo, c.status, c.tipo, c.prioridade, c.criado_em, c.atualizado_em, c.sla_inicio_em, c.prazo_resposta_em,
+            c.prazo_solucao_em, c.primeira_resposta_em, c.resolvido_em,
             cl.nome AS cliente, s.nome AS solicitante, a.nome AS area, r.nome AS responsavel,
             t.estado AS triagem, JSON_UNQUOTE(JSON_EXTRACT(t.ficha, '$.resumo')) AS resumo,
             IF(t.sugestao_aplicada_em IS NULL AND t.estado = 'concluida', t.sugestao_prioridade, NULL) AS sugestao_prioridade,
@@ -54,10 +67,12 @@ rotasPainel.get("/", async (req, res) => {
      LEFT JOIN areas a ON a.id = c.area_id LEFT JOIN usuarios r ON r.id = c.responsavel_id
      LEFT JOIN triagens t ON t.chamado_id = c.id LEFT JOIN usuarios su ON su.id = t.sugestao_responsavel_id
      WHERE ${visivel.sql} AND ${FILAS[fila].sql} ${clienteId ? "AND c.cliente_id = ?" : ""}
-     ORDER BY ${fila === "encerrados" ? "c.atualizado_em DESC" : `${ORDEM_PRIORIDADE}, c.criado_em`} LIMIT 300`,
+     ORDER BY ${fila === "encerrados" ? "c.atualizado_em DESC" : ORDEM_PRAZO} LIMIT 300`,
     [...visivel.params, ...valores(fila), ...(clienteId ? [clienteId] : [])],
   );
   const [clientes] = await pool.query<any[]>("SELECT id, nome FROM clientes WHERE ativo ORDER BY nome");
+  const agora = new Date();
+  for (const c of chamados) c.prazos = situacaoPrazos(c, agora);
   res.render("painel/fila", { chamados, fila, filas: FILAS, contagens, clientes, clienteId });
 });
 
@@ -151,6 +166,7 @@ rotasPainel.get("/chamados/:id", async (req, res) => {
   }
   res.render("painel/chamado", {
     ch, mensagens: await conversa(ch.id, true), eventos: await historico(ch.id), areas, equipe, outros, triagem, parecidos,
+    prazos: situacaoPrazos(ch), horas: await doChamado(ch.id), hoje: dataLocal(new Date()),
   });
 });
 
@@ -206,6 +222,12 @@ rotasPainel.post("/chamados/:id/triagem/refazer", exigirAdmin, (req, res) => aca
   if (ENCERRADAS.includes(ch.status)) throw new RegraChamado("Chamado encerrado.");
   await enfileirar(ch.id, true);
 }, "Ficha na fila do assistente. Recarregue em alguns segundos."));
+
+// Horas trabalhadas (o cliente nunca vê).
+rotasPainel.post("/chamados/:id/horas", (req, res) => acao(req, res, (ch) => lancar(req, ch, req.body), "Horas lançadas."));
+
+rotasPainel.post("/chamados/:id/horas/:ap/remover", (req, res) =>
+  acao(req, res, (ch) => remover(req, ch, Number(req.params.ap)), "Lançamento removido."));
 
 rotasPainel.post("/chamados/:id/assumir", (req, res) => acao(req, res, (ch) => assumir(req, ch), "Chamado assumido."));
 

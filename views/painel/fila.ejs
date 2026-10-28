@@ -20,7 +20,7 @@
   <p class="sutil">Nenhum chamado aqui.</p>
 <% } else { %>
   <table>
-    <thead><tr><th>Nº</th><th>Assunto</th><th>Cliente</th><th>Prioridade</th><th>Situação</th><th>Responsável</th><th>Aberto</th></tr></thead>
+    <thead><tr><th>Nº</th><th>Assunto</th><th>Cliente</th><th>Prioridade</th><th>Situação</th><th>Prazo</th><th>Responsável</th><th>Aberto</th></tr></thead>
     <tbody>
     <% for (const c of chamados) { %>
       <tr>
@@ -31,6 +31,8 @@
         <td><span class="pr pr-<%= c.prioridade %>"><%= PRIORIDADES[c.prioridade] %></span>
           <% if (c.sugestao_prioridade && c.sugestao_prioridade !== c.prioridade) { %><br><span class="sutil">🤖 <%= PRIORIDADES[c.sugestao_prioridade] %></span><% } %></td>
         <td><%- include("../partes/situacao", { status: c.status }) %></td>
+        <td><% const pz = c.primeira_resposta_em || c.prazos.resposta.estado === "sem" ? c.prazos.solucao : c.prazos.resposta; %>
+          <%- include("../partes/prazo", { p: pz }) %><% if (pz.estado !== "sem" && pz.estado !== "pausado") { %><br><span class="sutil"><%= pz === c.prazos.resposta ? "1ª resposta" : "solução" %></span><% } %></td>
         <td><%= c.responsavel ?? "—" %><% if (c.area) { %><br><span class="sutil"><%= c.area %></span><% } %>
           <% if (!c.responsavel && c.sugestao_responsavel) { %><br><span class="sutil">🤖 sugestão: <%= c.sugestao_responsavel %></span><% } %></td>
         <td><%= dataHora(c.criado_em) %></td>
